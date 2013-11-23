@@ -1,4 +1,4 @@
-/* This file contains the ssh server logging functions */
+/* This file contains the ssh-server logging functions */
 
 #ifndef _GNU_SOURCE
   #define _GNU_SOURCE
