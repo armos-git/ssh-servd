@@ -9,7 +9,8 @@ FLAGS = -I$(INC) $(CFLAGS)
 all:	clean
 
 	gcc -c $(FLAGS) -o $(BLD)/log.o $(SRC)/log.c
-	gcc $(FLAGS) -o testing $(SRC)/test.c $(BLD)/log.o
+	gcc -c $(FLAGS) -o $(BLD)/users.o $(SRC)/users.c
+	gcc $(FLAGS) -lssh -o testing $(SRC)/server.c $(BLD)/*.o
 
 clean:
-	rm -rf $(BLD)/*
+	rm -rf $(BLD)/* testing
