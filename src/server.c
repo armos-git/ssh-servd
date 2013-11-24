@@ -13,11 +13,24 @@
 #include <libssh/libssh.h>
 #include <libssh/server.h>
 
+#define	LOG_MODULE_NAME		"SSH Server"
+
 #include "log.h"
 #include "users.h"
 
 static void		*bad_addr;
 static sigjmp_buf	env;
+
+void	*memalloc(size_t size) {
+
+	void *ptr;
+
+	ptr = malloc(size);
+	if (ptr == NULL)
+		serv_log_fatal("Failed to allocate memory! Requested size is %u bytes. malloc(): %s", size, strerror(errno));
+
+	return ptr;
+}
 
 /* Prints a fatal message to stderr */
 static	void	fatal(const char *msg, int err) {
@@ -47,7 +60,7 @@ static	void	serv_save_state() {
 	/* Returning from setlongjmp() here */
 
 	/* Log the crash */
-	serv_log_fatal("SSH Server", "Received SIGSEGV when trying to access memory address %p", bad_addr);
+	serv_log_fatal("Received SIGSEGV when trying to access memory address %p", bad_addr);
 
 	/* Execute recovery code (quit for now)*/
 	exit(EXIT_FAILURE);
@@ -152,7 +165,7 @@ static	void	handle_user(int x) {
 	ip = users_get_ip(users[x]);
 
 	if (ssh_handle_key_exchange(session) != SSH_OK) {
-		serv_log_error("SSH Server", "ssh_handle_key_exchange(): %s", ssh_get_error(session));
+		serv_log_error("ssh_handle_key_exchange(): %s", ssh_get_error(session));
 		handle_user_terminate(users, x);
 	}
 
@@ -177,9 +190,9 @@ static	void	handle_user(int x) {
 				if (auth_user(usr, pass)) {
 					auth = 1;
 					ssh_message_auth_reply_success(sshmsg, 0);
-					serv_log("SSH Server", "%s loged in with username %s", ip, usr);
+					serv_log("%s loged in with username %s", ip, usr);
 				} else {
-					serv_log_warning("SSH Server", "%s login failed with username %s", ip, usr);
+					serv_log_warning("%s login failed with username %s", ip, usr);
 					ssh_message_reply_default(sshmsg);
 				}
 				retry++;
@@ -199,7 +212,7 @@ static	void	handle_user(int x) {
 	} while (!auth);
 
 	if (!auth) {
-		serv_log_warning("SSH Server", "%s login failed", ip);
+		serv_log_warning("%s login failed", ip);
 		handle_user_terminate(users, x);
 	}
 
@@ -226,7 +239,7 @@ static	void	handle_user(int x) {
 
 	} while ((sshmsg != NULL) && !chan);
 	if (!chan) {
-		serv_log_error("SSH Server", "Error waiting for channel request from %s: %s", ip, ssh_get_error(session));
+		serv_log_error("Error waiting for channel request from %s: %s", ip, ssh_get_error(session));
 		handle_user_terminate(users, x);
 	}
 
@@ -251,7 +264,7 @@ static	void	handle_user(int x) {
 	
 	} while ((sshmsg != NULL) && !shell);
 	if (!shell) {
-		serv_log_error("SSH Server", "Error waiting for shell request from %s: %s", ip, ssh_get_error(session));
+		serv_log_error("Error waiting for shell request from %s: %s", ip, ssh_get_error(session));
 		handle_user_terminate(users, x);
 	}
 	
@@ -297,7 +310,7 @@ int	main(int argc, char **argv) {
 
 	bad_addr = NULL;
 	serv_set_logfile("/home/vlad/Code/C/ssh-server/log");
-	serv_log("SSH Server", "Boot");
+	serv_log("Boot");
 
 	if (!serv_setup_signals())
 		fatal("serv_setup_signals()", errno);
@@ -312,7 +325,7 @@ int	main(int argc, char **argv) {
 
 	sshbind = ssh_bind_new();
 	if (sshbind == NULL) {
-		serv_log_fatal("SSH Server", "ssh_bind_new() failed");
+		serv_log_fatal("ssh_bind_new() failed");
 		exit(EXIT_FAILURE);
 	}
 
@@ -323,7 +336,7 @@ int	main(int argc, char **argv) {
 	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT, &port);
 
 	if (ssh_bind_listen(sshbind) < 0) {
-		serv_log_fatal("SSH Server", "ssh_bind_listen(): %s", ssh_get_error(sshbind));
+		serv_log_fatal("ssh_bind_listen(): %s", ssh_get_error(sshbind));
 		exit(EXIT_FAILURE);
 	}
 
@@ -333,30 +346,30 @@ int	main(int argc, char **argv) {
 	while (1) {
 		session = ssh_new();
 		if (session == NULL) {
-			serv_log_fatal("SSH Server", "ssh_new() failed");
+			serv_log_fatal("ssh_new() failed");
 			exit(EXIT_FAILURE);
 		}
 
 		if (ssh_bind_accept(sshbind, session) != SSH_OK) {
-			serv_log_error("SSH Server", "Error accepting ssh connection: ssh_bind_accept(): %s", ssh_get_error(sshbind));
+			serv_log_error("Error accepting ssh connection: ssh_bind_accept(): %s", ssh_get_error(sshbind));
 			ssh_free(session);
 			continue;
 		}
 
 		index = users_add(users, session);
 		if (index == USERS_FULL) {
-			serv_log_warning("SSH Server", "No more users allowd! Dropping ssh connection.");
+			serv_log_warning("No more users allowd! Dropping ssh connection.");
 			ssh_disconnect(session);
 			ssh_free(session);
 			continue;
 		}
 
-		serv_log("SSH Server", "%s established connection", users[index].ip);
+		serv_log("%s established connection", users[index].ip);
 
 		/* fork the new user */
 		new_user = fork();
 		if (new_user < 0) {
-			serv_log_error("SSH Server", "Forking new user failed: fork(): %s", strerror(errno));
+			serv_log_error("Forking new user failed: fork(): %s", strerror(errno));
 			users_close(users[index]);
 			continue;
 		}

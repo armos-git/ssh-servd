@@ -16,6 +16,10 @@
 #include <sys/stat.h>
 #include <libssh/libssh.h>
 
+#define LOG_MODULE_NAME		"SSH Server"
+
+
+#include "server.h"
 #include "users.h"
 #include "log.h"
 
@@ -31,12 +35,12 @@ void	*users_create() {
 	memkey = USERS_KEY;
 	segid = shmget(memkey, USERS_SIZE, IPC_CREAT | S_IRUSR | S_IWUSR);
 	if (segid < 0) {
-		serv_log_error("SSH Server", "Could not create shared memory for users: shmget(): ", strerror(errno));
+		serv_log_error("Could not create shared memory for users: shmget(): ", strerror(errno));
 		return NULL;
 	}
 
 	if ((addr = shmat(segid, NULL, 0)) == (void *) -1) {
-		serv_log_error("SSH Server", "Could not attach to shared memory for users: shmat(): ", strerror(errno));
+		serv_log_error("Could not attach to shared memory for users: shmat(): ", strerror(errno));
 		return NULL;
 	}
 
@@ -55,12 +59,12 @@ void	*users_attach() {
 	memkey = USERS_KEY;
 	segid = shmget(memkey, USERS_SIZE, S_IRUSR | S_IWUSR);
 	if (segid < 0) {
-		serv_log_error("SSH Server", "Could not find shared memory for users: shmget(): ", strerror(errno));
+		serv_log_error("Could not find shared memory for users: shmget(): ", strerror(errno));
 		return NULL;
 	}
 
 	if ((addr = shmat(segid, NULL, 0)) == (void *) -1) {
-		serv_log_error("SSH Server", "Could not attach to shared memory for users: shmat(): ", strerror(errno));
+		serv_log_error("Could not attach to shared memory for users: shmat(): ", strerror(errno));
 		return NULL;
 	}
 
@@ -133,8 +137,9 @@ int	users_add(users_t *users, ssh_session ses) {
 		users[i].ses = ses;
 		ip = users_resolve_ip(users[i]);
 		if (ip != NULL) {
-			users[i].ip = malloc(strlen(ip) + 1); // TODO check malloc value
-			strcpy(users[i].ip, ip);
+			users[i].ip = memalloc(strlen(ip) + 1);
+			if (users[i].ip != NULL)
+				strcpy(users[i].ip, ip);
 		}
 
 		return i;
