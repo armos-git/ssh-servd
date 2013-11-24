@@ -2,6 +2,8 @@
 #define USERS_H
 
 #define	USERS_MAX	50
+#define USERS_SIZE	sizeof(users_t[USERS_MAX])
+#define USERS_KEY	0x681fb732
 #define	USERS_FULL	-1
 
 typedef struct {
@@ -12,6 +14,12 @@ typedef struct {
 	
 } users_t;
 
+
+extern	void	*users_create();
+
+extern	void	*users_attach();
+
+extern	void	users_detach(void *addr);
 
 extern	void	users_init(users_t *users);
 

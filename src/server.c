@@ -14,7 +14,6 @@
 
 static void		*bad_addr;
 static sigjmp_buf	env;
-static users_t		users[USERS_MAX];
 
 /* Prints a fatal message to stderr */
 static	void	fatal(const char *msg, int err) {
@@ -125,15 +124,17 @@ static	void	daemonize() {
 }
 
 
-int	handle_user(users_t user) {
+int	handle_user(int x) {
 
+	users_t *users;
 	ssh_message sshmsg;
 	ssh_channel chan;
 	ssh_session session;
 	int auth, shell, retry;
 	char *usr, *pass;
 
-	session = user.ses;
+	users = users_attach();
+	session = users[x].ses;
 
 	if (ssh_handle_key_exchange(session) != SSH_OK) {
 		serv_log_error("SSH Server", "ssh_handle_key_exchange(): %s", ssh_get_error(session));
@@ -163,9 +164,9 @@ int	handle_user(users_t user) {
 				if (auth_user(usr, pass)) {
 					auth = 1;
 					ssh_message_auth_reply_success(sshmsg, 0);
-					serv_log("SSH Server", "%s loged in with username %s", user.ip, usr);
+					serv_log("SSH Server", "%s loged in with username %s", users[x].ip, usr);
 				} else {
-					serv_log_warning("SSH Server", "%s login failed with username %s", user.ip, usr);
+					serv_log_warning("SSH Server", "%s login failed with username %s", users[x].ip, usr);
 					ssh_message_reply_default(sshmsg);
 				}
 				retry++;
@@ -185,7 +186,7 @@ int	handle_user(users_t user) {
 	} while (!auth);
 
 	if (!auth) {
-		serv_log_warning("SSH Server", "%s login failed", user.ip);
+		serv_log_warning("SSH Server", "%s login failed", users[x].ip);
 		ssh_disconnect(session);
 		ssh_free(session);
 		_exit(EXIT_FAILURE);
@@ -214,7 +215,7 @@ int	handle_user(users_t user) {
 
 	} while ((sshmsg != NULL) && !chan);
 	if (!chan) {
-		serv_log_error("SSH Server", "Error waiting for channel request from %s: %s", user.ip, ssh_get_error(session));
+		serv_log_error("SSH Server", "Error waiting for channel request from %s: %s", users[x].ip, ssh_get_error(session));
 		ssh_disconnect(session);
 		ssh_free(session);
 		_exit(EXIT_FAILURE);
@@ -241,7 +242,7 @@ int	handle_user(users_t user) {
 	
 	} while ((sshmsg != NULL) && !shell);
 	if (!shell) {
-		serv_log_error("SSH Server", "Error waiting for shell request from %s: %s", user.ip, ssh_get_error(session));
+		serv_log_error("SSH Server", "Error waiting for shell request from %s: %s", users[x].ip, ssh_get_error(session));
 		ssh_disconnect(session);
 		ssh_free(session);
 		_exit(EXIT_FAILURE);
@@ -281,6 +282,7 @@ int	handle_user(users_t user) {
 
 int	main(int argc, char **argv) {
 
+	users_t	*users;
 	pid_t new_user;
 	ssh_bind sshbind;
 	ssh_session session;
@@ -297,6 +299,7 @@ int	main(int argc, char **argv) {
 
 	serv_save_state();
 
+	users = users_create();
 	users_init(users);
 	ssh_init();
 
@@ -354,7 +357,7 @@ int	main(int argc, char **argv) {
 
 		if (!new_user) {
 			ssh_bind_free(sshbind);
-			handle_user(users[i]);
+			handle_user(i);
 		}
 
 		users[i].pid = new_user;

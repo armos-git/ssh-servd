@@ -1,12 +1,66 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/socket.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/stat.h>
 #include <libssh/libssh.h>
 
 #include "users.h"
+#include "log.h"
+
+void	*users_create() {
+
+	key_t memkey;
+	int segid;
+
+	static void *addr;
+
+	memkey = USERS_KEY;
+	segid = shmget(memkey, USERS_SIZE, IPC_CREAT | S_IRUSR | S_IWUSR);
+	if (segid < 0) {
+		serv_log_error("SSH Server", "Could not create shared memory for users: shmget(): ", strerror(errno));
+		return NULL;
+	}
+
+	if ((addr = shmat(segid, NULL, 0)) == (void *) -1) {
+		serv_log_error("SSH Server", "Could not attach to shared memory for users: shmat(): ", strerror(errno));
+		return NULL;
+	}
+
+	return addr;
+}
+
+void	*users_attach() {
+
+	key_t memkey;
+	int segid;
+
+	static void *addr;
+
+	memkey = USERS_KEY;
+	segid = shmget(memkey, USERS_SIZE, S_IRUSR | S_IWUSR);
+	if (segid < 0) {
+		serv_log_error("SSH Server", "Could not find shared memory for users: shmget(): ", strerror(errno));
+		return NULL;
+	}
+
+	if ((addr = shmat(segid, NULL, 0)) == (void *) -1) {
+		serv_log_error("SSH Server", "Could not attach to shared memory for users: shmat(): ", strerror(errno));
+		return NULL;
+	}
+
+	return addr;
+}
+
+void	users_detach(void *addr) {
+
+	shmdt(addr);
+}
 
 void	users_init(users_t *users) {
 
