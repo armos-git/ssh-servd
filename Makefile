@@ -4,7 +4,7 @@ CFLAGS =
 SRC = ./src
 INC = ./include
 BLD = ./build
-FLAGS = -I$(INC) $(CFLAGS)
+FLAGS = -g -Wall -I$(INC) $(CFLAGS)
 
 all:	clean
 

@@ -3,18 +3,82 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
+#include <setjmp.h>
 #include <sys/stat.h>
 #include <libssh/libssh.h>
 #include <libssh/server.h>
 
 #include "log.h"
+#include "users.h"
 
+static void		*bad_addr;
+static sigjmp_buf	env;
+static users_t		users[USERS_MAX];
 
+/* Prints a fatal message to stderr */
 static	void	fatal(const char *msg, int err) {
 
-	fprintf(stderr, "FATAL: %s: %s\n", strerror(err));
+	if (err)
+		fprintf(stderr, "FATAL: %s: %s\n", msg, strerror(err));
+	else
+		fprintf(stderr, "FATAL: %s\n", msg);
+
 	_exit(EXIT_FAILURE);
 }
+
+/* SIGSEGV handler */
+static	int	sigsegv_handler(int sig, siginfo_t *info, void *cont) {
+
+	bad_addr = info->si_addr;
+	siglongjmp(env, 0);
+}
+
+
+/* Saves execution state in case of a crash from SIGSEGV */
+static	void	serv_save_state() {
+
+	if (!sigsetjmp(env, 0))
+		return;
+
+	/* Returning from setlongjmp() here */
+
+	/* Log the crash */
+	serv_log_fatal("SSH Server", "Received SIGSEGV when trying to access memory address %p", bad_addr);
+
+	/* Execute recovery code (quit for now)*/
+	exit(EXIT_FAILURE);
+}
+
+
+/* Setup SIGSEGV and SIGPIPE
+* Returns 0 on fail */
+static	int	serv_setup_signals() {
+
+	struct sigaction sighandle;
+
+	/* Install SIGSEGV handler */
+	memset(&sighandle, 0, sizeof(sighandle));
+	sighandle.sa_flags = SA_SIGINFO;
+	sighandle.sa_sigaction = (void *)&sigsegv_handler;
+	if (sigaction(SIGSEGV, &sighandle, NULL) < 0)
+		return 0;
+
+	/* Ignore SIGPIPE */
+	memset(&sighandle, 0, sizeof(sighandle));
+	sighandle.sa_handler = SIG_IGN;
+	if (sigaction(SIGPIPE, &sighandle, NULL) < 0)
+		return 0;
+
+	/* Ignore SIGCHLD */
+	memset(&sighandle, 0, sizeof(sighandle));
+	sighandle.sa_handler = SIG_IGN;
+	if (sigaction(SIGCHLD, &sighandle, NULL) < 0)
+		return 0;
+
+	return 1;
+}
+
 
 /* Daemonize! */
 static	void	daemonize() {
@@ -61,15 +125,21 @@ static	void	daemonize() {
 }
 
 
-int	handle_client(ssh_session session) {
+int	handle_user(users_t user) {
 
 	ssh_message sshmsg;
 	ssh_channel chan;
+	ssh_session session;
 	int auth, shell, retry;
+	char *usr, *pass;
+
+	session = user.ses;
 
 	if (ssh_handle_key_exchange(session) != SSH_OK) {
-		fprintf(stderr, "ssh_bind_accept(): %s\n", ssh_get_error(session));
-		exit(EXIT_FAILURE);
+		serv_log_error("SSH Server", "ssh_handle_key_exchange(): %s", ssh_get_error(session));
+		ssh_disconnect(session);
+		ssh_free(session);
+		_exit(EXIT_FAILURE);
 	}
 
 	/* authenticate client */
@@ -82,27 +152,32 @@ int	handle_client(ssh_session session) {
 		sshmsg = ssh_message_get(session);
 		if (sshmsg == NULL)
 			break;
+
 		switch (ssh_message_type(sshmsg)) {
-		case SSH_REQUEST_AUTH:
+		  case SSH_REQUEST_AUTH:
 			switch (ssh_message_subtype(sshmsg)) {
 
-			case SSH_AUTH_METHOD_PASSWORD:
-				if (auth_user(ssh_message_auth_user(sshmsg), ssh_message_auth_password(sshmsg))) {
+			  case SSH_AUTH_METHOD_PASSWORD:
+				usr = ssh_message_auth_user(sshmsg);
+				pass = ssh_message_auth_password(sshmsg);
+				if (auth_user(usr, pass)) {
 					auth = 1;
 					ssh_message_auth_reply_success(sshmsg, 0);
+					serv_log("SSH Server", "%s loged in with username %s", user.ip, usr);
 				} else {
+					serv_log_warning("SSH Server", "%s login failed with username %s", user.ip, usr);
 					ssh_message_reply_default(sshmsg);
 				}
 				retry++;
 				break;
 
-			default:
+			  default:
 				ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PASSWORD);
 				ssh_message_reply_default(sshmsg);
 				break;
 			}
 			break;
-		default:
+		  default:
 			ssh_message_reply_default(sshmsg);
 			break;
 		}
@@ -110,10 +185,10 @@ int	handle_client(ssh_session session) {
 	} while (!auth);
 
 	if (!auth) {
-		fprintf(stderr, "login failed!\n");
+		serv_log_warning("SSH Server", "%s login failed", user.ip);
 		ssh_disconnect(session);
 		ssh_free(session);
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 
@@ -126,11 +201,11 @@ int	handle_client(ssh_session session) {
 
 		switch (ssh_message_type(sshmsg)) {
 
-		case SSH_REQUEST_CHANNEL_OPEN:
+		  case SSH_REQUEST_CHANNEL_OPEN:
 			if (ssh_message_subtype(sshmsg) == SSH_CHANNEL_SESSION)
 				chan = ssh_message_channel_request_open_reply_accept(sshmsg);
 			break;
-		default:
+		  default:
 			ssh_message_reply_default(sshmsg);
 			break;
 		}
@@ -139,10 +214,10 @@ int	handle_client(ssh_session session) {
 
 	} while ((sshmsg != NULL) && !chan);
 	if (!chan) {
-		fprintf(stderr, "error: %s\n", ssh_get_error(session));
+		serv_log_error("SSH Server", "Error waiting for channel request from %s: %s", user.ip, ssh_get_error(session));
 		ssh_disconnect(session);
 		ssh_free(session);
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	/* wait for shell request from client */
@@ -166,75 +241,125 @@ int	handle_client(ssh_session session) {
 	
 	} while ((sshmsg != NULL) && !shell);
 	if (!shell) {
-		fprintf(stderr, "error: %s\n", ssh_get_error(session));
+		serv_log_error("SSH Server", "Error waiting for shell request from %s: %s", user.ip, ssh_get_error(session));
 		ssh_disconnect(session);
 		ssh_free(session);
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 	
+	/* load shell module */
+/*
 	int rc;
 	char buf[1024];
 	const char color[] = "\x1b[0m";
 	ssh_channel_write(chan, color, strlen(color));
 	while (1) {
 		rc = ssh_channel_read(chan, buf, 1024, 0);
+		switch (rc) {
+			case 0:
+			case SSH_AGAIN:
+				continue;
+			case SSH_ERROR:
+				continue;
+		}
+		if (buf[0] == 'q') {
+			ssh_disconnect(session);
+			ssh_free(session);
+			_exit(EXIT_SUCCESS);
+		}
 		ssh_channel_write(chan, buf, rc);
-		write(1, buf, rc);
+		//write(1, buf, rc);
 	}
+*/
 
-	return 1;
+	_exit(EXIT_FAILURE);
 }
+
+
 
 
 
 int	main(int argc, char **argv) {
 
-	return 0;
-
-	ssh_session session;
+	pid_t new_user;
 	ssh_bind sshbind;
-	unsigned int port = 50000;
-	pid_t p;
+	ssh_session session;
+	int i;
 
+	bad_addr = NULL;
+	serv_set_logfile("/home/vlad/Code/C/ssh-server/log");
+	serv_log("SSH Server", "Boot");
+
+	if (!serv_setup_signals())
+		fatal("serv_setup_signals()", errno);
+
+	daemonize();
+
+	serv_save_state();
+
+	users_init(users);
 	ssh_init();
-
-
 
 	sshbind = ssh_bind_new();
 	if (sshbind == NULL) {
-		fprintf(stderr, "ssh_bind_new() failed1\n");
+		serv_log_fatal("SSH Server", "ssh_bind_new() failed");
 		exit(EXIT_FAILURE);
 	}
 
-	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_DSAKEY, "./ssh_host_dsa_key");
-	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_RSAKEY, "./ssh_host_rsa_key");
-	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDADDR, "127.0.0.1");
+	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_DSAKEY, "/home/vlad/Code/C/ssh-server/ssh_host_dsa_key");
+	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_RSAKEY, "/home/vlad/Code/C/ssh-server/ssh_host_rsa_key");
+	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDADDR, "0.0.0.0");
+	unsigned int port = 8000;
 	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT, &port);
 
 	if (ssh_bind_listen(sshbind) < 0) {
-		fprintf(stderr, "ssh_bind_listen(): %s\n", ssh_get_error(sshbind));
+		serv_log_fatal("SSH Server", "ssh_bind_listen(): %s", ssh_get_error(sshbind));
 		exit(EXIT_FAILURE);
 	}
 
+
+	/* Server main loop */
 
 	while (1) {
 		session = ssh_new();
 		if (session == NULL) {
-			fprintf(stderr, "ssh_new() failed1\n");
+			serv_log_fatal("SSH Server", "ssh_new() failed");
 			exit(EXIT_FAILURE);
 		}
 
 		if (ssh_bind_accept(sshbind, session) != SSH_OK) {
-			fprintf(stderr, "ssh_bind_accept(): %s\n", ssh_get_error(sshbind));
-			exit(EXIT_FAILURE);
+			serv_log_error("SSH Server", "Error accepting ssh connection: ssh_bind_accept(): %s", ssh_get_error(sshbind));
+			ssh_free(session);
+			continue;
 		}
 
-		p = fork();
+		i = users_add(users, session);
+		if (i == USERS_FULL) {
+			serv_log_warning("SSH Server", "No more users allowd! Dropping ssh connection.");
+			ssh_disconnect(session);
+			ssh_free(session);
+			continue;
+		}
 
-		if (!p) {
+		serv_log("SSH Server", "%s established connection", users[i].ip);
+
+		/* fork the new user */
+		new_user = fork();
+		if (new_user < 0) {
+			serv_log_error("SSH Server", "Forking new user failed: fork(): %s", strerror(errno));
+			ssh_disconnect(session);
+			users_del(users[i]);
+			continue;
+		}
+
+		if (!new_user) {
 			ssh_bind_free(sshbind);
-			handle_client(session);
+			handle_user(users[i]);
 		}
+
+		users[i].pid = new_user;
+		ssh_disconnect(session);
+		ssh_free(session);
 	}
 
 	return 0;
