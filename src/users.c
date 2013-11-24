@@ -1,3 +1,9 @@
+/* This file contains all ssh-server user managment functions */
+
+#ifndef _GNU_SOURCE
+  #define _GNU_SOURCE
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -13,6 +19,8 @@
 #include "users.h"
 #include "log.h"
 
+/* Creates a shared memory for the users. Should call this once from the main thread
+* Returns newly allocated mem */
 void	*users_create() {
 
 	key_t memkey;
@@ -35,6 +43,8 @@ void	*users_create() {
 	return addr;
 }
 
+/* Attaches to the users shared memory segment
+* Returns the shared segmet address */
 void	*users_attach() {
 
 	key_t memkey;
@@ -57,11 +67,13 @@ void	*users_attach() {
 	return addr;
 }
 
+/* Detaches from the users shared memory segment */
 void	users_detach(void *addr) {
 
 	shmdt(addr);
 }
 
+/* Inits all users */
 void	users_init(users_t *users) {
 
 	int i;
@@ -70,23 +82,14 @@ void	users_init(users_t *users) {
 		users[i].ses = NULL;
 		users[i].ip = NULL;
 		users[i].pid = 0;
+		users[i].echo = 1;
 	}
 	
 }
 
-int	users_get_free(users_t *users) {
-
-	int i;
-
-	for (i = 0; i < USERS_MAX; i++) {
-		if (users[i].ses == NULL)
-			return i;
-	}
-
-	return USERS_FULL;
-}
-
-char	*users_get_ip(users_t user) {
+/* Converts a user connected socket to ip address
+* Returns the ip address string */
+char	*users_resolve_ip(users_t user) {
 
 	struct sockaddr_in sockaddr;
 	socklen_t len;
@@ -98,6 +101,26 @@ char	*users_get_ip(users_t user) {
 	return inet_ntoa(sockaddr.sin_addr);
 }
 
+
+/* Get user session */
+void	*users_get_session(users_t user) {
+
+	return user.ses;
+}
+
+/* Get user ip address */
+char	*users_get_ip(users_t user) {
+
+	return user.ip;
+}
+
+/* Get user pid */
+pid_t	users_get_pid(users_t user) {
+
+	return user.pid;
+}
+
+/* Adds a new user with ssh_session ses */
 int	users_add(users_t *users, ssh_session ses) {
 
 	int i;
@@ -108,9 +131,9 @@ int	users_add(users_t *users, ssh_session ses) {
 			continue;
 
 		users[i].ses = ses;
-		ip = users_get_ip(users[i]);
+		ip = users_resolve_ip(users[i]);
 		if (ip != NULL) {
-			users[i].ip = malloc(strlen(ip) + 1);
+			users[i].ip = malloc(strlen(ip) + 1); // TODO check malloc value
 			strcpy(users[i].ip, ip);
 		}
 
@@ -120,6 +143,7 @@ int	users_add(users_t *users, ssh_session ses) {
 	return USERS_FULL;
 }
 
+/* Deletes and free a user without disconnecting */
 void	users_del(users_t user) {
 
 	if (user.ses != NULL) {
@@ -131,7 +155,35 @@ void	users_del(users_t user) {
 		free(user.ip);
 		user.ip = NULL;
 	}
+
+	user.pid = 0;
+	user.echo = 1;
 }
+
+/* Disconnect and free user's resources withoud deleting it from the users list
+* Use this to free resources before exiting a child process */
+void	users_free(users_t user) {
+
+	if (user.ses != NULL) {
+		ssh_disconnect(user.ses);
+		ssh_free(user.ses);
+	}
+
+	if (user.ip != NULL)
+		free(user.ip);
+}
+
+/* Disconnect, free, and delete a user */
+void	users_close(users_t user) {
+
+	if (user.ses == NULL)
+		return;
+
+	ssh_disconnect(user.ses);
+	users_del(user);
+}
+
+
 
 int	auth_user(const char *user, const char *pass) {
 

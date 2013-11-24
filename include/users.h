@@ -11,6 +11,7 @@ typedef struct {
 	ssh_session ses;
 	char *ip;
 	pid_t pid;
+	int echo;
 	
 } users_t;
 
@@ -23,11 +24,21 @@ extern	void	users_detach(void *addr);
 
 extern	void	users_init(users_t *users);
 
-extern	int	users_get_free(users_t *users);
+extern	char	*users_resolve_ip(users_t user);
+
+extern	void	*users_get_session(users_t user);
+
+extern	char	*users_get_ip(users_t user);
+
+extern	pid_t	users_get_pid(users_t user);
 
 extern	int	users_add(users_t *users, ssh_session ses);
 
 extern	void	users_del(users_t user);
+
+extern	void	users_free(users_t user);
+
+extern	void	users_close(users_t user);
 
 extern	int	auth_user(const char *user, const char *pass);
 

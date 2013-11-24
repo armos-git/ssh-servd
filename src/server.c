@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+  #define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,7 +54,7 @@ static	void	serv_save_state() {
 }
 
 
-/* Setup SIGSEGV and SIGPIPE
+/* Setup SIGSEGV, SIGPIPE, SIGCHLD
 * Returns 0 on fail */
 static	int	serv_setup_signals() {
 
@@ -124,23 +128,32 @@ static	void	daemonize() {
 }
 
 
-int	handle_user(int x) {
+/* Clean server child termination */
+static	void	handle_user_terminate(users_t *users, int x) {
+
+	users_close(users[x]);
+	users_detach(users);
+	_exit(EXIT_FAILURE);
+}
+
+/* Server child to handle a newly connected user */
+static	void	handle_user(int x) {
 
 	users_t *users;
 	ssh_message sshmsg;
 	ssh_channel chan;
 	ssh_session session;
 	int auth, shell, retry;
-	char *usr, *pass;
+	const char *usr, *pass;
+	const char *ip;
 
 	users = users_attach();
-	session = users[x].ses;
+	session = users_get_session(users[x]);
+	ip = users_get_ip(users[x]);
 
 	if (ssh_handle_key_exchange(session) != SSH_OK) {
 		serv_log_error("SSH Server", "ssh_handle_key_exchange(): %s", ssh_get_error(session));
-		ssh_disconnect(session);
-		ssh_free(session);
-		_exit(EXIT_FAILURE);
+		handle_user_terminate(users, x);
 	}
 
 	/* authenticate client */
@@ -164,9 +177,9 @@ int	handle_user(int x) {
 				if (auth_user(usr, pass)) {
 					auth = 1;
 					ssh_message_auth_reply_success(sshmsg, 0);
-					serv_log("SSH Server", "%s loged in with username %s", users[x].ip, usr);
+					serv_log("SSH Server", "%s loged in with username %s", ip, usr);
 				} else {
-					serv_log_warning("SSH Server", "%s login failed with username %s", users[x].ip, usr);
+					serv_log_warning("SSH Server", "%s login failed with username %s", ip, usr);
 					ssh_message_reply_default(sshmsg);
 				}
 				retry++;
@@ -186,10 +199,8 @@ int	handle_user(int x) {
 	} while (!auth);
 
 	if (!auth) {
-		serv_log_warning("SSH Server", "%s login failed", users[x].ip);
-		ssh_disconnect(session);
-		ssh_free(session);
-		_exit(EXIT_FAILURE);
+		serv_log_warning("SSH Server", "%s login failed", ip);
+		handle_user_terminate(users, x);
 	}
 
 
@@ -215,10 +226,8 @@ int	handle_user(int x) {
 
 	} while ((sshmsg != NULL) && !chan);
 	if (!chan) {
-		serv_log_error("SSH Server", "Error waiting for channel request from %s: %s", users[x].ip, ssh_get_error(session));
-		ssh_disconnect(session);
-		ssh_free(session);
-		_exit(EXIT_FAILURE);
+		serv_log_error("SSH Server", "Error waiting for channel request from %s: %s", ip, ssh_get_error(session));
+		handle_user_terminate(users, x);
 	}
 
 	/* wait for shell request from client */
@@ -242,14 +251,12 @@ int	handle_user(int x) {
 	
 	} while ((sshmsg != NULL) && !shell);
 	if (!shell) {
-		serv_log_error("SSH Server", "Error waiting for shell request from %s: %s", users[x].ip, ssh_get_error(session));
-		ssh_disconnect(session);
-		ssh_free(session);
-		_exit(EXIT_FAILURE);
+		serv_log_error("SSH Server", "Error waiting for shell request from %s: %s", ip, ssh_get_error(session));
+		handle_user_terminate(users, x);
 	}
 	
 	/* load shell module */
-/*
+
 	int rc;
 	char buf[1024];
 	const char color[] = "\x1b[0m";
@@ -271,9 +278,9 @@ int	handle_user(int x) {
 		ssh_channel_write(chan, buf, rc);
 		//write(1, buf, rc);
 	}
-*/
 
-	_exit(EXIT_FAILURE);
+
+	handle_user_terminate(users, x);
 }
 
 
@@ -286,7 +293,7 @@ int	main(int argc, char **argv) {
 	pid_t new_user;
 	ssh_bind sshbind;
 	ssh_session session;
-	int i;
+	int index;
 
 	bad_addr = NULL;
 	serv_set_logfile("/home/vlad/Code/C/ssh-server/log");
@@ -336,33 +343,35 @@ int	main(int argc, char **argv) {
 			continue;
 		}
 
-		i = users_add(users, session);
-		if (i == USERS_FULL) {
+		index = users_add(users, session);
+		if (index == USERS_FULL) {
 			serv_log_warning("SSH Server", "No more users allowd! Dropping ssh connection.");
 			ssh_disconnect(session);
 			ssh_free(session);
 			continue;
 		}
 
-		serv_log("SSH Server", "%s established connection", users[i].ip);
+		serv_log("SSH Server", "%s established connection", users[index].ip);
 
 		/* fork the new user */
 		new_user = fork();
 		if (new_user < 0) {
 			serv_log_error("SSH Server", "Forking new user failed: fork(): %s", strerror(errno));
-			ssh_disconnect(session);
-			users_del(users[i]);
+			users_close(users[index]);
 			continue;
 		}
 
 		if (!new_user) {
-			ssh_bind_free(sshbind);
-			handle_user(i);
+			/* child */
+			ssh_bind_free(sshbind); // close server in child
+			handle_user(index); // will never return
 		}
 
-		users[i].pid = new_user;
-		ssh_disconnect(session);
-		ssh_free(session);
+		/* parrent */
+		users[index].pid = new_user;
+
+		/* free resources in parent */
+		users_free(users[index]);
 	}
 
 	return 0;
