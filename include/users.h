@@ -11,7 +11,6 @@ typedef struct {
 	ssh_session ses;
 	char *ip;
 	pid_t pid;
-	int echo;
 	
 } users_t;
 

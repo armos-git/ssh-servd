@@ -1,6 +1,7 @@
-#ifndef SERVER_H
-#define SERVER_H
+#ifndef SSH_SERVER_H
+#define SSH_SERVER_H
 
-extern	void	*memalloc(size_t size);
+#define	MODULES		5
+#define	PATH_MAX	256
 
-#endif /* SERVER_H */
+#endif /* SSH_SERVER_H */

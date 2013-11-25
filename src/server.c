@@ -9,27 +9,36 @@
 #include <errno.h>
 #include <signal.h>
 #include <setjmp.h>
+#include <getopt.h>
 #include <sys/stat.h>
 #include <libssh/libssh.h>
 #include <libssh/server.h>
 
 #define	LOG_MODULE_NAME		"SSH Server"
 
+#include "config_tool.h"
 #include "log.h"
 #include "users.h"
+#include "handle_user.h"
+#include "server.h"
 
 static void		*bad_addr;
 static sigjmp_buf	env;
 
-void	*memalloc(size_t size) {
+/* Config options */
+static char		listen_addr[INET_ADDRSTRLEN];
+static int		listen_port;
+static char		log_file[PATH_MAX];
+static char		users_file[PATH_MAX];
+static char		modules_dir[PATH_MAX];
+static char		shell[PATH_MAX];
+static char		modules[MODULES][PATH_MAX];
 
-	void *ptr;
 
-	ptr = malloc(size);
-	if (ptr == NULL)
-		serv_log_fatal("Failed to allocate memory! Requested size is %u bytes. malloc(): %s", size, strerror(errno));
+static	void	print_usage() {
 
-	return ptr;
+	fprintf(stderr, "Usage:\n");
+	exit(EXIT_FAILURE);
 }
 
 /* Prints a fatal message to stderr */
@@ -140,165 +149,55 @@ static	void	daemonize() {
 */
 }
 
+static	int	load_config(const char *filename) {
 
-/* Clean server child termination */
-static	void	handle_user_terminate(users_t *users, int x) {
+	config_t conf;
+	void *ptr;
+	int i;
 
-	users_close(users[x]);
-	users_detach(users);
-	_exit(EXIT_FAILURE);
+	/* sets up default values */
+	strcpy(listen_addr, "0.0.0.0");
+	listen_port = 8000;
+	strcpy(log_file, "/var/log/ssh-server.log");
+	memset(users_file, 0, sizeof(users_file));
+	memset(modules_dir, 0, sizeof(modules_dir));
+	memset(shell, 0, sizeof(shell));
+	memset(modules, 0, sizeof(modules));
+
+	if (config_init(&conf, filename) != CONFIG_OK) {
+		fprintf(stderr, "Config: cannot load config file: %s\n", config_get_error(&conf));
+		config_close(&conf);
+		return 0;
+	}
+
+	config_set_filesize(&conf, CONFIG_TINY);
+	config_set_string_buffer(&conf, PATH_MAX);
+
+	config_bind_var(&conf, "listen", "%s", listen_addr);
+	config_bind_var(&conf, "port", "%i", &listen_port);
+	config_bind_var(&conf, "log", "%s", log_file);
+	config_bind_var(&conf, "users", "%s", users_file);
+	config_bind_var(&conf, "modules_dir", "%s", modules_dir);
+	config_bind_var(&conf, "shell", "%s", shell);
+	ptr = config_bind_var(&conf, "modules", "%s", NULL);
+	for (i = 0; i < MODULES; i++)
+		ptr = config_addto_var(ptr, &modules[i]);
+
+	if (config_parse(&conf) != CONFIG_OK) {
+		fprintf(stderr, "Config error: %s\n", config_get_error(&conf));
+		config_close(&conf);
+		return 0;
+	}
+
+	config_close(&conf);
+	return 1;
 }
 
-/* Server child to handle a newly connected user */
-static	void	handle_user(int x) {
+void	manage_users(const char *cmd) {
 
-	users_t *users;
-	ssh_message sshmsg;
-	ssh_channel chan;
-	ssh_session session;
-	int auth, shell, retry;
-	const char *usr, *pass;
-	const char *ip;
-
-	users = users_attach();
-	session = users_get_session(users[x]);
-	ip = users_get_ip(users[x]);
-
-	if (ssh_handle_key_exchange(session) != SSH_OK) {
-		serv_log_error("ssh_handle_key_exchange(): %s", ssh_get_error(session));
-		handle_user_terminate(users, x);
-	}
-
-	/* authenticate client */
-	auth = 0;
-	retry = 0;
-	do {
-		if (retry == 3)
-			break;
-
-		sshmsg = ssh_message_get(session);
-		if (sshmsg == NULL)
-			break;
-
-		switch (ssh_message_type(sshmsg)) {
-		  case SSH_REQUEST_AUTH:
-			switch (ssh_message_subtype(sshmsg)) {
-
-			  case SSH_AUTH_METHOD_PASSWORD:
-				usr = ssh_message_auth_user(sshmsg);
-				pass = ssh_message_auth_password(sshmsg);
-				if (auth_user(usr, pass)) {
-					auth = 1;
-					ssh_message_auth_reply_success(sshmsg, 0);
-					serv_log("%s loged in with username %s", ip, usr);
-				} else {
-					serv_log_warning("%s login failed with username %s", ip, usr);
-					ssh_message_reply_default(sshmsg);
-				}
-				retry++;
-				break;
-
-			  default:
-				ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PASSWORD);
-				ssh_message_reply_default(sshmsg);
-				break;
-			}
-			break;
-		  default:
-			ssh_message_reply_default(sshmsg);
-			break;
-		}
-		ssh_message_free(sshmsg);
-	} while (!auth);
-
-	if (!auth) {
-		serv_log_warning("%s login failed", ip);
-		handle_user_terminate(users, x);
-	}
-
-
-	/* wait for channel request from client */
-	chan = 0;
-	do {
-		sshmsg = ssh_message_get(session);
-		if (sshmsg == NULL)
-			continue;
-
-		switch (ssh_message_type(sshmsg)) {
-
-		  case SSH_REQUEST_CHANNEL_OPEN:
-			if (ssh_message_subtype(sshmsg) == SSH_CHANNEL_SESSION)
-				chan = ssh_message_channel_request_open_reply_accept(sshmsg);
-			break;
-		  default:
-			ssh_message_reply_default(sshmsg);
-			break;
-		}
-
-		ssh_message_free(sshmsg);
-
-	} while ((sshmsg != NULL) && !chan);
-	if (!chan) {
-		serv_log_error("Error waiting for channel request from %s: %s", ip, ssh_get_error(session));
-		handle_user_terminate(users, x);
-	}
-
-	/* wait for shell request from client */
-	shell = 0;
-	do {
-		sshmsg = ssh_message_get(session);
-		if (sshmsg == NULL)
-			continue;
-
-		if (ssh_message_type(sshmsg) == SSH_REQUEST_CHANNEL &&
-			(ssh_message_subtype(sshmsg) == SSH_CHANNEL_REQUEST_SHELL ||
-			 ssh_message_subtype(sshmsg) == SSH_CHANNEL_REQUEST_PTY))
-		{
-			shell = 1;
-			ssh_message_channel_request_reply_success(sshmsg);
-		} else {
-			ssh_message_reply_default(sshmsg);
-		}
-
-		ssh_message_free(sshmsg);
-	
-	} while ((sshmsg != NULL) && !shell);
-	if (!shell) {
-		serv_log_error("Error waiting for shell request from %s: %s", ip, ssh_get_error(session));
-		handle_user_terminate(users, x);
-	}
-	
-	/* load shell module */
-
-	int rc;
-	char buf[1024];
-	const char color[] = "\x1b[0m";
-	ssh_channel_write(chan, color, strlen(color));
-	while (1) {
-		rc = ssh_channel_read(chan, buf, 1024, 0);
-		switch (rc) {
-			case 0:
-			case SSH_AGAIN:
-				continue;
-			case SSH_ERROR:
-				continue;
-		}
-		if (buf[0] == 'q') {
-			ssh_disconnect(session);
-			ssh_free(session);
-			_exit(EXIT_SUCCESS);
-		}
-		ssh_channel_write(chan, buf, rc);
-		//write(1, buf, rc);
-	}
-
-
-	handle_user_terminate(users, x);
+	printf("%s\n", cmd);
+	exit(EXIT_SUCCESS);
 }
-
-
-
-
 
 int	main(int argc, char **argv) {
 
@@ -307,6 +206,40 @@ int	main(int argc, char **argv) {
 	ssh_bind sshbind;
 	ssh_session session;
 	int index;
+	char c, *u_cmd;
+	const char opts[] = "f:Du:";
+	int opt_conf, opt_daemon, opt_users;
+
+
+	/* parse options */
+	if (argc == 1)
+		print_usage();
+
+	opt_conf = 0;
+	opt_daemon = 0;
+	opt_users = 0;
+	while ((c = getopt(argc, argv, opts)) != -1) {
+		switch (c) {
+		  case 'f':
+			opt_conf = 1;
+			if (!load_config(optarg))
+				exit(EXIT_FAILURE);
+		  case 'D':
+			opt_daemon = 1;
+			break;
+		  case 'u':
+			opt_users = 1;
+			u_cmd = optarg;
+			break;
+		  default:
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (opt_users)
+		manage_users(u_cmd);
+	if (!opt_conf)
+		fatal("No config file specified!", 0);
 
 	bad_addr = NULL;
 	serv_set_logfile("/home/vlad/Code/C/ssh-server/log");
@@ -315,7 +248,8 @@ int	main(int argc, char **argv) {
 	if (!serv_setup_signals())
 		fatal("serv_setup_signals()", errno);
 
-	daemonize();
+	if (opt_daemon)
+		daemonize();
 
 	serv_save_state();
 

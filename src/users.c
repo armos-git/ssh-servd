@@ -19,7 +19,7 @@
 #define LOG_MODULE_NAME		"SSH Server"
 
 
-#include "server.h"
+#include "mem.h"
 #include "users.h"
 #include "log.h"
 
@@ -86,7 +86,6 @@ void	users_init(users_t *users) {
 		users[i].ses = NULL;
 		users[i].ip = NULL;
 		users[i].pid = 0;
-		users[i].echo = 1;
 	}
 	
 }
@@ -162,7 +161,6 @@ void	users_del(users_t user) {
 	}
 
 	user.pid = 0;
-	user.echo = 1;
 }
 
 /* Disconnect and free user's resources withoud deleting it from the users list
