@@ -24,15 +24,7 @@
 
 static void		*bad_addr;
 static sigjmp_buf	env;
-
-/* Config options */
-static char		listen_addr[INET_ADDRSTRLEN];
-static int		listen_port;
-static char		log_file[PATH_MAX];
-static char		users_file[PATH_MAX];
-static char		modules_dir[PATH_MAX];
-static char		shell[PATH_MAX];
-static char		modules[MODULES][PATH_MAX];
+static serv_options_t	serv_options;
 
 
 static	void	print_usage() {
@@ -155,33 +147,28 @@ static	int	load_config(const char *filename) {
 	void *ptr;
 	int i;
 
-	/* sets up default values */
-	strcpy(listen_addr, "0.0.0.0");
-	listen_port = 8000;
-	strcpy(log_file, "/var/log/ssh-server.log");
-	memset(users_file, 0, sizeof(users_file));
-	memset(modules_dir, 0, sizeof(modules_dir));
-	memset(shell, 0, sizeof(shell));
-	memset(modules, 0, sizeof(modules));
+	memset(&serv_options, 0, sizeof(serv_options));
 
 	if (config_init(&conf, filename) != CONFIG_OK) {
-		fprintf(stderr, "Config: cannot load config file: %s\n", config_get_error(&conf));
+		fprintf(stderr, "Config error: cannot load config file: %s\n", config_get_error(&conf));
 		config_close(&conf);
 		return 0;
 	}
 
 	config_set_filesize(&conf, CONFIG_TINY);
-	config_set_string_buffer(&conf, PATH_MAX);
+	config_set_string_buffer(&conf, MAXFILE);
 
-	config_bind_var(&conf, "listen", "%s", listen_addr);
-	config_bind_var(&conf, "port", "%i", &listen_port);
-	config_bind_var(&conf, "log", "%s", log_file);
-	config_bind_var(&conf, "users", "%s", users_file);
-	config_bind_var(&conf, "modules_dir", "%s", modules_dir);
-	config_bind_var(&conf, "shell", "%s", shell);
+	config_bind_var(&conf, "listen", "%s", serv_options.listen_addr);
+	config_bind_var(&conf, "port", "%i", &serv_options.listen_port);
+	config_bind_var(&conf, "DSA_Key", "%s", serv_options.dsakey);
+	config_bind_var(&conf, "RSA_Key", "%s", serv_options.rsakey);
+	config_bind_var(&conf, "log", "%s", serv_options.log_file);
+	config_bind_var(&conf, "users", "%s", serv_options.users_file);
+	config_bind_var(&conf, "modules_dir", "%s", serv_options.modules_dir);
+	config_bind_var(&conf, "shell", "%s", serv_options.shell);
 	ptr = config_bind_var(&conf, "modules", "%s", NULL);
 	for (i = 0; i < MODULES; i++)
-		ptr = config_addto_var(ptr, &modules[i]);
+		ptr = config_addto_var(ptr, &serv_options.modules[i]);
 
 	if (config_parse(&conf) != CONFIG_OK) {
 		fprintf(stderr, "Config error: %s\n", config_get_error(&conf));
@@ -190,6 +177,43 @@ static	int	load_config(const char *filename) {
 	}
 
 	config_close(&conf);
+
+	/* check for required options */
+	if (!serv_options.listen_addr[0]) {
+		fprintf(stderr, "Config error: please specify listen address!\n");
+		return 0;
+	}
+
+	if (!serv_options.listen_port) {
+		fprintf(stderr, "Config error: please specify listen port!\n");
+		return 0;
+	}
+
+	if (!serv_options.dsakey[0]) {
+		fprintf(stderr, "Config error: please specify DSA key file!\n");
+		return 0;
+	}
+
+	if (!serv_options.rsakey[0]) {
+		fprintf(stderr, "Config error: please specify RSA key file!\n");
+		return 0;
+	}
+
+	if (!serv_options.log_file[0]) {
+		fprintf(stderr, "Config error: please specify log file!\n");
+		return 0;
+	}
+
+	if (!serv_options.users_file[0]) {
+		fprintf(stderr, "Config error: please specify users file!\n");
+		return 0;
+	}
+
+	if (!serv_options.shell[0]) {
+		fprintf(stderr, "Config error: please specify shell module!\n");
+		return 0;
+	}
+
 	return 1;
 }
 
@@ -215,6 +239,7 @@ int	main(int argc, char **argv) {
 	if (argc == 1)
 		print_usage();
 
+	bad_addr = NULL;
 	opt_conf = 0;
 	opt_daemon = 0;
 	opt_users = 0;
@@ -224,6 +249,7 @@ int	main(int argc, char **argv) {
 			opt_conf = 1;
 			if (!load_config(optarg))
 				exit(EXIT_FAILURE);
+			break;
 		  case 'D':
 			opt_daemon = 1;
 			break;
@@ -236,13 +262,13 @@ int	main(int argc, char **argv) {
 		}
 	}
 
-	if (opt_users)
-		manage_users(u_cmd);
 	if (!opt_conf)
 		fatal("No config file specified!", 0);
 
-	bad_addr = NULL;
-	serv_set_logfile("/home/vlad/Code/C/ssh-server/log");
+	if (opt_users)
+		manage_users(u_cmd);
+
+	serv_set_logfile(serv_options.log_file);
 	serv_log("Boot");
 
 	if (!serv_setup_signals())
@@ -263,11 +289,10 @@ int	main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 
-	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_DSAKEY, "/home/vlad/Code/C/ssh-server/ssh_host_dsa_key");
-	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_RSAKEY, "/home/vlad/Code/C/ssh-server/ssh_host_rsa_key");
-	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDADDR, "0.0.0.0");
-	unsigned int port = 8000;
-	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT, &port);
+	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_DSAKEY, serv_options.dsakey);
+	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_RSAKEY, serv_options.rsakey);
+	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDADDR, serv_options.listen_addr);
+	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT, &serv_options.listen_port);
 
 	if (ssh_bind_listen(sshbind) < 0) {
 		serv_log_fatal("ssh_bind_listen(): %s", ssh_get_error(sshbind));

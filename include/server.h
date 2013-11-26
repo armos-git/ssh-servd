@@ -1,7 +1,20 @@
 #ifndef SSH_SERVER_H
 #define SSH_SERVER_H
 
+#define	MAXFILE		256
 #define	MODULES		5
-#define	PATH_MAX	256
+
+/* Server configuration options */
+typedef struct {
+	char	listen_addr[INET_ADDRSTRLEN];
+	int	listen_port;
+	char	dsakey[MAXFILE];
+	char	rsakey[MAXFILE];
+	char	log_file[MAXFILE];
+	char	users_file[MAXFILE];
+	char	modules_dir[MAXFILE];
+	char	shell[MAXFILE];
+	char	modules[MODULES][MAXFILE];
+} serv_options_t;
 
 #endif /* SSH_SERVER_H */
