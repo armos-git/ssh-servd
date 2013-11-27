@@ -17,4 +17,6 @@ typedef struct {
 	char	modules[MODULES][MAXFILE];
 } serv_options_t;
 
+extern	serv_options_t		serv_options;
+
 #endif /* SSH_SERVER_H */

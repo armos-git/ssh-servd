@@ -22,9 +22,11 @@
 #include "handle_user.h"
 #include "server.h"
 
+/* Server configuration options */
+serv_options_t		serv_options;
+
 static void		*bad_addr;
 static sigjmp_buf	env;
-static serv_options_t	serv_options;
 
 
 static	void	print_usage() {
@@ -126,7 +128,7 @@ static	void	daemonize() {
        	/* Close out the standard file descriptors */
        	close(STDIN_FILENO);
        	close(STDOUT_FILENO);
-       	close(STDERR_FILENO);	
+       	//close(STDERR_FILENO);	
 
 	/* record server pid */
 /*
@@ -308,6 +310,8 @@ int	main(int argc, char **argv) {
 			serv_log_fatal("ssh_new() failed");
 			exit(EXIT_FAILURE);
 		}
+
+		ssh_set_blocking(session, 1);
 
 		if (ssh_bind_accept(sshbind, session) != SSH_OK) {
 			serv_log_error("Error accepting ssh connection: ssh_bind_accept(): %s", ssh_get_error(sshbind));

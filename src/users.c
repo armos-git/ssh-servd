@@ -190,7 +190,7 @@ void	users_close(users_t user) {
 
 int	auth_user(const char *user, const char *pass) {
 
-	if (strcmp(user, "vlad"))
+	if (strcmp(user, "test"))
 		return 0;
 	if (strcmp(pass, "1234"))
 		return 0;
