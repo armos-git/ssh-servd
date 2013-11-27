@@ -128,19 +128,16 @@ static	void	daemonize() {
        	/* Close out the standard file descriptors */
        	close(STDIN_FILENO);
        	close(STDOUT_FILENO);
-       	//close(STDERR_FILENO);	
+       	close(STDERR_FILENO);	
 
 	/* record server pid */
-/*
 	mypid = getpid();
-
 
 	pidfile = fopen(PID_FILE, "w");
 	if (pidfile != NULL) {
 		fprintf(pidfile, "%u", mypid);
 		fclose(pidfile);
 	}
-*/
 }
 
 static	int	load_config(const char *filename) {
