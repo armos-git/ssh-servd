@@ -3,7 +3,7 @@
 
 #define	MAXFILE		256
 #define	MODULES		5
-#define PIDFILE		"/var/run/ssh-server.pid"
+#define PID_FILE		"/var/run/ssh-server.pid"
 
 /* Server configuration options */
 typedef struct {

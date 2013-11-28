@@ -102,7 +102,8 @@ static	int	serv_setup_signals() {
 /* Daemonize! */
 static	void	daemonize() {
 
-	pid_t pid, sid;
+	pid_t mypid, pid, sid;
+	FILE *pidfile;
 
        	/* Fork off the parent process */
        	pid = fork();
