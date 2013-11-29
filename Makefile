@@ -10,6 +10,7 @@ FLAGS = -g -Wall -I$(INC) $(CFLAGS)
 
 all:	clean
 
+	mkdir $(BLD)
 	$(CC) -c $(FLAGS) -o $(BLD)/mem.o $(SRC)/mem.c
 	$(CC) -c $(FLAGS) -o $(BLD)/log.o $(SRC)/log.c
 	$(CC) -c $(FLAGS) -o $(BLD)/users.o $(SRC)/users.c
@@ -19,4 +20,4 @@ all:	clean
 shell:
 	$(CC) -shared -fPIC $(FLAGS) -o shell_example.mod $(SRC)/shell_example.c
 clean:
-	rm -rf $(BLD)/* $(OUT)
+	rm -rf $(BLD) $(OUT)
