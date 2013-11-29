@@ -192,6 +192,8 @@ void	users_close(users_t user) {
 }
 
 
+/* Reads input directly from process tty
+* Returns -1 on error */
 static	int	read_tty(int fd, void *data, size_t len, int noecho) {
 
 	int rc;
@@ -216,12 +218,13 @@ static	int	read_tty(int fd, void *data, size_t len, int noecho) {
 	return rc;
 }
 
+/* Prompts user for username, password and security level
+* Returns 0 on error */
 static	int	users_config_prompt(users_info_t *info, int verify) {
 
-	int fd, rc, rc2, ret;
+	int fd, rc, rc2;
 	char *ver;
 
-	ret = 1;
 	fd = open("/dev/tty", O_RDWR);
 	if (fd < 0) {
 		fprintf(stderr, "Error opening /dev/tty!\n");
@@ -248,6 +251,11 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 
 	if (verify) {
 		ver = malloc(rc);
+		if (ver == NULL) {
+			close(fd);
+			return 0;
+		}
+
 		printf("Verify Password: ");
 		fflush(stdout);
 
@@ -263,24 +271,29 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 
 		if ((rc != rc2) || (strcmp(info->pass, ver))) {
 			printf("\nPasswords don't match!\n");
-			ret = 0;
+			free(ver);
+			close(fd);
+			return 0;
 		}
-
-		free(ver);
-		
 	}
 
 	close(fd);
-	return ret;
+
+	printf("Enter user security level number: ");
+	fflush(stdout);
+	scanf("%u", &info->level);
+
+	return 1;
 }
 
-static	int	users_config_scan_user(FILE *f, const users_info_t *info) {
+/* Searches for username info.user in the users config file and files out struct info if found.
+* Returns 0 if not found, 1 if found, 2 on syntax error */
+static	int	users_config_scan_user(FILE *f, users_info_t *info) {
 
 	char *name, *pass_str;
 	unsigned int level;
-	int ret, rc;
+	int rc;
 
-	ret = 0;
 	name = NULL;
 	pass_str = NULL;
 
@@ -289,27 +302,27 @@ static	int	users_config_scan_user(FILE *f, const users_info_t *info) {
 		if (rc == EOF)
 			break;
 		if (rc < 3) {
-			ret = 2;
-			break;
+			free(name);
+			free(pass_str);
+			return 2;
 		}
 
 		if (!strcmp(name, info->user)) {
-			if (name != NULL)
-				free(name);
-			if (pass_str != NULL)
-				free(pass_str);
-			ret = 1;
-			break;
-		}
-		if (name != NULL)
+			strncpy(info->pass, pass_str, USERS_MAX_PASS - 1);
+			info->level = level;
 			free(name);
-		if (pass_str != NULL)
 			free(pass_str);
+			return 1;
+		}
+		free(name);
+		free(pass_str);
 	}
 
-	return ret;
+	return 0;
 }
 
+/* Generates random salt from the set [a–zA–Z0–9./] with the specified len
+* Returns 0 on error */
 static	int	users_gen_salt(char *salt, unsigned int len) {
 
 	int i, rc, fd;
@@ -336,18 +349,22 @@ static	int	users_gen_salt(char *salt, unsigned int len) {
 		c = salt[i];
 		salt[i] = salt_set[ c % salt_set_len ];
 	}
-
 	salt[i] = 0;
 
 	return 1;
 }
 
+/* Adds a new user in the users config file */
 void	users_config_new() {
 
 	FILE *f;
 	int len, rc;
 	char *cr_pass, *salt;
 	users_info_t info;
+
+	/* default level */
+	memset(&info, 0, sizeof(info));
+	info.level = 1;
 
 	if (!users_config_prompt(&info, 1))
 		return;
@@ -372,7 +389,11 @@ void	users_config_new() {
 		return;
 	}
 
-	users_gen_salt(info.salt, USERS_MAX_SALT);
+	if (!users_gen_salt(info.salt, USERS_MAX_SALT)) {
+		fclose(f);
+		return;
+	}
+
 	len = strlen(info.salt) + 4;
 	salt = malloc(len);
 	if (salt == NULL) {
@@ -384,7 +405,6 @@ void	users_config_new() {
 	cr_pass = crypt(info.pass, salt);
 	free(salt);
 
-	info.level = 1;
 	fprintf(f, "%s %u %s\n", info.user, info.level, cr_pass);
 	fclose(f);
 
