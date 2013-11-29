@@ -14,7 +14,7 @@ all:	clean
 	$(CC) -c $(FLAGS) -o $(BLD)/log.o $(SRC)/log.c
 	$(CC) -c $(FLAGS) -o $(BLD)/users.o $(SRC)/users.c
 	$(CC) -c $(FLAGS) -o $(BLD)/handle_user.o $(SRC)/handle_user.c
-	$(CC) $(FLAGS) -lssh -ldl -o $(OUT) $(SRC)/server.c $(BLD)/*.o config_tool.a
+	$(CC) $(FLAGS) -lssh -ldl -lcrypt -o $(OUT) $(SRC)/server.c $(BLD)/*.o config_tool.a
 
 shell:
 	$(CC) -shared -fPIC $(FLAGS) -o shell_example.mod $(SRC)/shell_example.c

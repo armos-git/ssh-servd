@@ -4,6 +4,7 @@
   #define _GNU_SOURCE
 #endif
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -14,11 +15,15 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <crypt.h>
 #include <libssh/libssh.h>
 
 #define LOG_MODULE_NAME		"SSH Server"
 
 
+#include "server.h"
 #include "mem.h"
 #include "users.h"
 #include "log.h"
@@ -187,6 +192,141 @@ void	users_close(users_t user) {
 }
 
 
+static	int	read_tty(int fd, void *data, size_t len, int noecho) {
+
+	int rc;
+	struct termios oldt, newt;
+
+	if (noecho) {
+		tcgetattr(fd, &oldt);
+		newt = oldt;
+		newt.c_lflag &= ~(ECHO);
+		tcsetattr(fd, TCSANOW, &newt);
+	}
+	if ((rc = read(fd, data, len)) < 0) {
+		fprintf(stderr, "Error reading from /dev/tty!\n");
+		close(fd);
+		return -1;
+	}
+	if (noecho) {
+		tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+		printf("\n");
+	}
+
+	return rc;
+}
+
+static	int	users_config_prompt(char *usr, char *pass, int verify) {
+
+	int fd, rc, rc2, ret;
+	char *ver;
+
+	ret = 1;
+	fd = open("/dev/tty", O_RDWR);
+	if (fd < 0) {
+		fprintf(stderr, "Error opening /dev/tty!\n");
+		return 0;
+	}
+
+	printf("Username: ");
+	fflush(stdout);
+	rc = read_tty(fd, usr, USERS_MAX_NAME - 1, 0);
+	if (rc < 0) {
+		close(fd);
+		return 0;
+	}
+	usr[rc-1] = 0;
+
+	printf("Password: ");
+	fflush(stdout);
+	rc = read_tty(fd, pass, USERS_MAX_PASS - 1, 1);
+	if (rc < 0) {
+		close(fd);
+		return 0;
+	}
+	pass[rc-1] = 0;
+
+	if (verify) {
+		ver = malloc(rc);
+		printf("Verify Password: ");
+		fflush(stdout);
+
+		rc2 = read_tty(fd, ver, rc, 1);
+		if (rc < 0) {
+			free(ver);
+			close(fd);
+			return 0;
+		}
+		rc--;
+		rc2--;
+		ver[rc2] = 0;
+
+		if ((rc != rc2) || (strcmp(pass, ver))) {
+			printf("\nPasswords don't match!\n");
+			ret = 0;
+		}
+
+		free(ver);
+		
+	}
+
+	close(fd);
+	return ret;
+}
+
+static	int	users_config_scan_user(FILE *f, const char *usr) {
+
+	char *name;
+	int rc;
+
+	rc = 0;
+	memset(name, 0, 10);
+
+	fseek(f, 0, SEEK_SET);
+
+	while (!feof(f)) {
+		fscanf(f, "%ms", &name);
+		if (!strcmp(name, usr)) {
+			free(name);
+			rc = 1;
+			break;
+		}
+		free(name);
+	}
+
+	fseek(f, 0, SEEK_SET);
+	return rc;
+}
+
+void	users_config_new() {
+
+	FILE *f;
+	char user[USERS_MAX_NAME];
+	char pass[USERS_MAX_PASS];
+
+	if (!users_config_prompt(user, pass, 1))
+		return;
+	
+	f = fopen(serv_options.users_file, "a+");
+	if (f == NULL) {
+		fprintf(stderr, "Cannot open users file: %s\n", serv_options.users_file);
+		return;
+	}
+
+	if (users_config_scan_user(f, user)) {
+		fprintf(stderr, "User '%s' already exists!\n", user);
+		fclose(f);
+		return;
+	}
+
+	fclose(f);
+	
+
+}
+
+void	users_config_rem() {
+
+}
 
 int	auth_user(const char *user, const char *pass) {
 

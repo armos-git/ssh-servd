@@ -217,9 +217,19 @@ static	int	load_config(const char *filename) {
 	return 1;
 }
 
-void	manage_users(const char *cmd) {
+static	void	manage_users(const char *cmd) {
 
-	printf("%s\n", cmd);
+	if (!strcmp(cmd, "add")) {
+		users_config_new();
+		exit(EXIT_SUCCESS);
+	}
+
+	if (!strcmp(cmd, "del") || !strcmp(cmd, "rem")) {
+		users_config_rem();
+		exit(EXIT_SUCCESS);
+	}
+
+	fprintf(stderr, "Unrecognized command '%s'\n", cmd);
 	exit(EXIT_SUCCESS);
 }
 

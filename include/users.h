@@ -6,6 +6,10 @@
 #define USERS_KEY	0x681fb732
 #define	USERS_FULL	-1
 
+#define	USERS_MAX_NAME	30
+#define USERS_MAX_PASS	30
+#define USERS_SALT_SIZE	10
+
 typedef struct {
 
 	ssh_session ses;
@@ -38,6 +42,10 @@ extern	void	users_del(users_t user);
 extern	void	users_free(users_t user);
 
 extern	void	users_close(users_t user);
+
+extern	void	users_config_new();
+
+extern	void	users_config_rem();
 
 extern	int	auth_user(const char *user, const char *pass);
 
