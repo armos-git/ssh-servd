@@ -77,15 +77,15 @@ void	handle_user_load_shell() {
 	
 	handle_user_hndl = dlopen(module_name, RTLD_LAZY);
 	if (handle_user_hndl == NULL) {
-		free(module_name);
 		serv_log_error("Cannot load shell module %s", module_name);
+		free(module_name);
 		handle_user_terminate();
 	}
 
 	void (*shell_init)(shell_callbacks_t *a) = dlsym(handle_user_hndl, "shell_init");
 	if (shell_init == NULL) {
-		free(module_name);
 		serv_log_error("Cannot load 'shell_init()' frome module %s", module_name);
+		free(module_name);
 		handle_user_terminate();
 	}	
 
