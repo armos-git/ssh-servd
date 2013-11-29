@@ -8,7 +8,7 @@
 
 #define	USERS_MAX_NAME	30
 #define USERS_MAX_PASS	30
-#define USERS_SALT_SIZE	16
+#define USERS_MAX_SALT	16
 
 typedef struct {
 

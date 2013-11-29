@@ -278,22 +278,27 @@ static	int	users_config_scan_user(FILE *f, const users_info_t *info) {
 
 	char *name, *pass_str;
 	unsigned int level;
-	int rc;
+	int ret, rc;
 
-	rc = 0;
+	ret = 0;
 	name = NULL;
 	pass_str = NULL;
 
-	fseek(f, 0, SEEK_SET);
-
 	while (!feof(f)) {
-		fscanf(f, "%ms %u %ms", &name, &level, &pass_str);
+		rc = fscanf(f, "%ms%u%ms", &name, &level, &pass_str);
+		if (rc == EOF)
+			break;
+		if (rc < 3) {
+			ret = 2;
+			break;
+		}
+
 		if (!strcmp(name, info->user)) {
 			if (name != NULL)
 				free(name);
 			if (pass_str != NULL)
 				free(pass_str);
-			rc = 1;
+			ret = 1;
 			break;
 		}
 		if (name != NULL)
@@ -302,41 +307,88 @@ static	int	users_config_scan_user(FILE *f, const users_info_t *info) {
 			free(pass_str);
 	}
 
-	fseek(f, 0, SEEK_SET);
-	return rc;
+	return ret;
 }
 
-static	int	users_gen_salt(char *salt) {
+static	int	users_gen_salt(char *salt, unsigned int len) {
 
-	int i;
-	char c, buf[USERS_SALT_SIZE];
+	int i, rc, fd;
+	unsigned char c;
+	const char salt_set[] = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	const int salt_set_len = strlen(salt_set) - 1;
 
-	return 0;
+	fd = open("/dev/urandom", O_RDONLY);
+	if (fd < 0) {
+		fprintf(stderr, "Error opening /dev/urandom!\n");
+		return 0;
+	}
+
+	rc = read(fd, salt, len);
+	if (rc < 0) {
+		fprintf(stderr, "Error reading from /dev/urandom!\n");
+		close(fd);
+		return 0;
+	}
+
+	close(fd);
+
+	for (i = 0; i < len - 1; i++) {
+		c = salt[i];
+		salt[i] = salt_set[ c % salt_set_len ];
+	}
+
+	salt[i] = 0;
+
+	return 1;
 }
 
 void	users_config_new() {
 
 	FILE *f;
+	int len, rc;
+	char *cr_pass, *salt;
 	users_info_t info;
 
 	if (!users_config_prompt(&info, 1))
 		return;
 	
-	f = fopen(serv_options.users_file, "a");
+	f = fopen(serv_options.users_file, "a+");
 	if (f == NULL) {
 		fprintf(stderr, "Cannot open users file: %s\n", serv_options.users_file);
 		return;
 	}
 
-	if (users_config_scan_user(f, &info)) {
+	rc = users_config_scan_user(f, &info);
+	switch (rc) {
+	  case 0:
+		break;
+	  case 1:
 		fprintf(stderr, "User '%s' already exists!\n", info.user);
+		fclose(f);
+		return;
+	  case 2:
+		fprintf(stderr, "Syntax error in users file %s\n", serv_options.users_file);
 		fclose(f);
 		return;
 	}
 
-	fclose(f);
-	
+	users_gen_salt(info.salt, USERS_MAX_SALT);
+	len = strlen(info.salt) + 4;
+	salt = malloc(len);
+	if (salt == NULL) {
+		fclose(f);
+		return;
+	}
 
+	snprintf(salt, len, "$6$%s", info.salt);
+	cr_pass = crypt(info.pass, salt);
+	free(salt);
+
+	info.level = 1;
+	fprintf(f, "%s %u %s\n", info.user, info.level, cr_pass);
+	fclose(f);
+
+	printf("User '%s' added to %s\n", info.user, serv_options.users_file);
 }
 
 void	users_config_rem() {
