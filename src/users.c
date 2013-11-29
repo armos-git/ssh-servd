@@ -216,7 +216,7 @@ static	int	read_tty(int fd, void *data, size_t len, int noecho) {
 	return rc;
 }
 
-static	int	users_config_prompt(char *usr, char *pass, int verify) {
+static	int	users_config_prompt(users_info_t *info, int verify) {
 
 	int fd, rc, rc2, ret;
 	char *ver;
@@ -230,21 +230,21 @@ static	int	users_config_prompt(char *usr, char *pass, int verify) {
 
 	printf("Username: ");
 	fflush(stdout);
-	rc = read_tty(fd, usr, USERS_MAX_NAME - 1, 0);
+	rc = read_tty(fd, info->user, USERS_MAX_NAME - 1, 0);
 	if (rc < 0) {
 		close(fd);
 		return 0;
 	}
-	usr[rc-1] = 0;
+	info->user[rc-1] = 0;
 
 	printf("Password: ");
 	fflush(stdout);
-	rc = read_tty(fd, pass, USERS_MAX_PASS - 1, 1);
+	rc = read_tty(fd, info->pass, USERS_MAX_PASS - 1, 1);
 	if (rc < 0) {
 		close(fd);
 		return 0;
 	}
-	pass[rc-1] = 0;
+	info->pass[rc-1] = 0;
 
 	if (verify) {
 		ver = malloc(rc);
@@ -261,7 +261,7 @@ static	int	users_config_prompt(char *usr, char *pass, int verify) {
 		rc2--;
 		ver[rc2] = 0;
 
-		if ((rc != rc2) || (strcmp(pass, ver))) {
+		if ((rc != rc2) || (strcmp(info->pass, ver))) {
 			printf("\nPasswords don't match!\n");
 			ret = 0;
 		}
@@ -274,19 +274,18 @@ static	int	users_config_prompt(char *usr, char *pass, int verify) {
 	return ret;
 }
 
-static	int	users_config_scan_user(FILE *f, const char *usr) {
+static	int	users_config_scan_user(FILE *f, const users_info_t *info) {
 
 	char *name;
 	int rc;
 
 	rc = 0;
-	memset(name, 0, 10);
 
 	fseek(f, 0, SEEK_SET);
 
 	while (!feof(f)) {
 		fscanf(f, "%ms", &name);
-		if (!strcmp(name, usr)) {
+		if (!strcmp(name, info->user)) {
 			free(name);
 			rc = 1;
 			break;
@@ -301,10 +300,9 @@ static	int	users_config_scan_user(FILE *f, const char *usr) {
 void	users_config_new() {
 
 	FILE *f;
-	char user[USERS_MAX_NAME];
-	char pass[USERS_MAX_PASS];
+	users_info_t info;
 
-	if (!users_config_prompt(user, pass, 1))
+	if (!users_config_prompt(&info, 1))
 		return;
 	
 	f = fopen(serv_options.users_file, "a+");
@@ -313,8 +311,8 @@ void	users_config_new() {
 		return;
 	}
 
-	if (users_config_scan_user(f, user)) {
-		fprintf(stderr, "User '%s' already exists!\n", user);
+	if (users_config_scan_user(f, &info)) {
+		fprintf(stderr, "User '%s' already exists!\n", info.user);
 		fclose(f);
 		return;
 	}

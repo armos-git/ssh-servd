@@ -18,6 +18,14 @@ typedef struct {
 	
 } users_t;
 
+typedef	struct {
+
+	char user[USERS_MAX_NAME];
+	char pass[USERS_MAX_PASS];
+	unsigned char level;
+
+} users_info_t;
+
 
 extern	void	*users_create();
 
