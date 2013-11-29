@@ -8,7 +8,7 @@
 
 #define	USERS_MAX_NAME	30
 #define USERS_MAX_PASS	30
-#define USERS_SALT_SIZE	10
+#define USERS_SALT_SIZE	16
 
 typedef struct {
 
@@ -22,7 +22,8 @@ typedef	struct {
 
 	char user[USERS_MAX_NAME];
 	char pass[USERS_MAX_PASS];
-	unsigned char level;
+	char salt[USERS_MAX_SALT];
+	unsigned int level;
 
 } users_info_t;
 

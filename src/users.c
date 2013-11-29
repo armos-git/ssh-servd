@@ -276,25 +276,42 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 
 static	int	users_config_scan_user(FILE *f, const users_info_t *info) {
 
-	char *name;
+	char *name, *pass_str;
+	unsigned int level;
 	int rc;
 
 	rc = 0;
+	name = NULL;
+	pass_str = NULL;
 
 	fseek(f, 0, SEEK_SET);
 
 	while (!feof(f)) {
-		fscanf(f, "%ms", &name);
+		fscanf(f, "%ms %u %ms", &name, &level, &pass_str);
 		if (!strcmp(name, info->user)) {
-			free(name);
+			if (name != NULL)
+				free(name);
+			if (pass_str != NULL)
+				free(pass_str);
 			rc = 1;
 			break;
 		}
-		free(name);
+		if (name != NULL)
+			free(name);
+		if (pass_str != NULL)
+			free(pass_str);
 	}
 
 	fseek(f, 0, SEEK_SET);
 	return rc;
+}
+
+static	int	users_gen_salt(char *salt) {
+
+	int i;
+	char c, buf[USERS_SALT_SIZE];
+
+	return 0;
 }
 
 void	users_config_new() {
@@ -305,7 +322,7 @@ void	users_config_new() {
 	if (!users_config_prompt(&info, 1))
 		return;
 	
-	f = fopen(serv_options.users_file, "a+");
+	f = fopen(serv_options.users_file, "a");
 	if (f == NULL) {
 		fprintf(stderr, "Cannot open users file: %s\n", serv_options.users_file);
 		return;
