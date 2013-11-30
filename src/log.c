@@ -29,6 +29,12 @@ int	serv_set_logfile(const char *filename) {
 	return 1;
 }
 
+/* Free the log_file */
+void	serv_free_log() {
+
+	free(log_file);
+}
+
 /* Logs "[time_string][module] type: msg"
  * returns 0 if fopen() fails.
  * Use macro functions form log.h

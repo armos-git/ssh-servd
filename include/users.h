@@ -34,6 +34,8 @@ extern	void	*users_attach();
 
 extern	void	users_detach(void *addr);
 
+extern	void	users_destroy();
+
 extern	void	users_init(users_t *users);
 
 extern	char	*users_resolve_ip(users_t user);

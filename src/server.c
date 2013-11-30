@@ -28,6 +28,8 @@ serv_options_t		serv_options;
 static void		*bad_addr;
 static sigjmp_buf	env;
 
+int			serv_running;
+int			serv_term_sig;
 
 static	void	print_usage() {
 
@@ -54,6 +56,14 @@ static	int	sigsegv_handler(int sig, siginfo_t *info, void *cont) {
 }
 
 
+/* SIGTERM and SIGINT handler */
+static	void	sigterm_handler(int sig) {
+
+	serv_running = 0;
+	serv_term_sig = sig;
+}
+
+
 /* Saves execution state in case of a crash from SIGSEGV */
 static	void	serv_save_state() {
 
@@ -66,11 +76,11 @@ static	void	serv_save_state() {
 	serv_log_fatal("Received SIGSEGV when trying to access memory address %p", bad_addr);
 
 	/* Execute recovery code (quit for now)*/
-	exit(EXIT_FAILURE);
+	_exit(EXIT_FAILURE);
 }
 
 
-/* Setup SIGSEGV, SIGPIPE, SIGCHLD
+/* Setup SIGSEGV, SIGPIPE, SIGTERM, SIGINT, SIGCHLD
 * Returns 0 on fail */
 static	int	serv_setup_signals() {
 
@@ -81,6 +91,14 @@ static	int	serv_setup_signals() {
 	sighandle.sa_flags = SA_SIGINFO;
 	sighandle.sa_sigaction = (void *)&sigsegv_handler;
 	if (sigaction(SIGSEGV, &sighandle, NULL) < 0)
+		return 0;
+
+	/* Install SIGTERM and SIGINT handler */
+	memset(&sighandle, 0, sizeof(sighandle));
+	sighandle.sa_handler = &sigterm_handler;
+	if (sigaction(SIGTERM, &sighandle, NULL) < 0)
+		return 0;
+	if (sigaction(SIGINT, &sighandle, NULL) < 0)
 		return 0;
 
 	/* Ignore SIGPIPE */
@@ -312,7 +330,8 @@ int	main(int argc, char **argv) {
 
 	/* Server main loop */
 
-	while (1) {
+	serv_running = 1;
+	while (serv_running) {
 		session = ssh_new();
 		if (session == NULL) {
 			serv_log_fatal("ssh_new() failed");
@@ -357,6 +376,14 @@ int	main(int argc, char **argv) {
 		/* free resources in parent */
 		users_free(users[index]);
 	}
+
+	serv_log_warning("Received signal %i", serv_term_sig);
+
+	ssh_bind_free(sshbind);
+	users_destroy();
+	serv_free_log();
+
+	ssh_finalize();
 
 	return 0;
 }

@@ -12,6 +12,7 @@ enum LOG_TYPES {
 
 extern	int	serv_set_logfile(const char *filename);
 
+extern	void	serv_free_log();
 
 #define		serv_log(msg...)		__serv_log(LOG_MSG, LOG_MODULE_NAME, msg)
 #define		serv_log_warning(msg...)	__serv_log(LOG_WARNING, LOG_MODULE_NAME, msg)

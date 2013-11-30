@@ -28,12 +28,13 @@
 #include "users.h"
 #include "log.h"
 
+static	int	segid;
+
 /* Creates a shared memory for the users. Should call this once from the main thread
 * Returns newly allocated mem */
 void	*users_create() {
 
 	key_t memkey;
-	int segid;
 
 	static void *addr;
 
@@ -80,6 +81,12 @@ void	*users_attach() {
 void	users_detach(void *addr) {
 
 	shmdt(addr);
+}
+
+/* Destroys the  users shared memory segment */
+void	users_destroy() {
+
+	shmctl(segid, IPC_RMID, NULL);
 }
 
 /* Inits all users */
