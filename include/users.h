@@ -7,8 +7,8 @@
 #define	USERS_FULL	-1
 
 #define	USERS_MAX_NAME	30
-#define USERS_MAX_PASS	30
-#define USERS_MAX_SALT	16
+#define USERS_MAX_PASS	128
+#define USERS_MAX_SALT	20
 
 typedef struct {
 
@@ -56,6 +56,6 @@ extern	void	users_config_new();
 
 extern	void	users_config_rem();
 
-extern	int	auth_user(const char *user, const char *pass);
+extern	int	users_auth(const char *user, const char *pass);
 
 #endif /* USERS_H */

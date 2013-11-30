@@ -136,7 +136,7 @@ void	handle_user(int x) {
 			  case SSH_AUTH_METHOD_PASSWORD:
 				usr = ssh_message_auth_user(sshmsg);
 				pass = ssh_message_auth_password(sshmsg);
-				if (auth_user(usr, pass)) {
+				if (users_auth(usr, pass)) {
 					auth = 1;
 					ssh_message_auth_reply_success(sshmsg, 0);
 					serv_log("%s loged in with username %s", ip, usr);

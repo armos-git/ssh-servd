@@ -415,11 +415,71 @@ void	users_config_rem() {
 
 }
 
-int	auth_user(const char *user, const char *pass) {
+/* auths user
+* Returns 1 on success */
+int	users_auth(const char *user, const char *pass) {
 
-	if (strcmp(user, "test"))
+	int rc, i, j, s;
+	FILE *f;
+	users_info_t info;
+	char salt[USERS_MAX_SALT];
+	char *enc_pass;
+
+	f = fopen(serv_options.users_file, "r");
+	if (f == NULL) {
+		serv_log_error("Cannot open users file: fopen(): %s", strerror(errno));
 		return 0;
-	if (strcmp(pass, "1234"))
+	}
+	
+	memset(&info, 0, sizeof(info));
+	strncpy(info.user, user, USERS_MAX_NAME - 1);
+
+	rc = users_config_scan_user(f, &info);
+	switch (rc) {
+	  case 0:
+		fclose(f);
 		return 0;
+	  case 1:
+		/* found */
+		break;
+	  case 2:
+		serv_log_warning("Syntax error in users file %s while searching for user %s", serv_options.users_file, user);
+		fclose(f);
+		return 0;
+	}
+
+	fclose(f);
+
+	/* Separates the salt from the password string */
+	s = strlen(info.pass);
+	j = 0;
+	for (i = 0; i < s; i++) {
+		if (info.pass[i] == '$') {
+			j++;
+			if (j == 3) {
+				info.pass[i] = 0;
+				break;
+			}
+		}
+	}
+
+	/* check for syntax error */
+	if (j != 3) {
+		serv_log_warning("Syntax error in users file %s. Invalid password string!", serv_options.users_file);
+		return 0;
+	}
+
+	/* save the salt */
+	strncpy(salt, info.pass, USERS_MAX_SALT - 1);
+
+	/* restores the original string */
+	info.pass[i] = '$';
+
+	/* test for valid password */
+	enc_pass = crypt(pass, salt);
+	if (strcmp(enc_pass, info.pass))
+		return 0;
+
+	/* Success! */
 	return 1;
 }
