@@ -90,8 +90,9 @@ void	handle_user_load_shell() {
 	}	
 
 	shell_cb.ip_addr = handle_user_users[handle_user_index].ip;
-	shell_cb.shell_write = NULL;
+	shell_cb.shell_read = NULL;
 	shell_cb.shell_write = &handle_user_write;
+	shell_cb.shell_log = &__serv_log;
 	shell_cb.shell_exit = &handle_user_terminate_shell;
 	shell_init(&shell_cb);
 

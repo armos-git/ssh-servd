@@ -6,6 +6,7 @@ typedef struct {
 	const char *ip_addr;
 	void (*shell_write)(void *data, unsigned int len);
 	void (*shell_read)(void *data, unsigned int len);
+	int  (*shell_log)(int type, const char *module, const char *msg, ...);
 	void (*shell_exit)(void);
 
 } shell_callbacks_t;

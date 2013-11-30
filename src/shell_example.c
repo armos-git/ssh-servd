@@ -7,6 +7,7 @@
 
 
 void	(*shell_write)(void *data, unsigned int len);
+int  	(*shell_log)(int type, const char *module, const char *msg, ...);
 void	(*shell_exit)(void);
 void	shell_read(void *data, unsigned int len);
 
@@ -16,6 +17,7 @@ void	shell_init(shell_callbacks_t *cb) {
 
 	cb->shell_read = &shell_read;
 	shell_write = cb->shell_write;
+	shell_log = cb->shell_log;
 	shell_exit = cb->shell_exit;
 	ip_addr = cb->ip_addr;
 }
@@ -23,6 +25,8 @@ void	shell_init(shell_callbacks_t *cb) {
 void	shell_read(void *data, unsigned int len) {
 
 	char *buf = data;
+
+	shell_log(0, "Shell", "Hello!");
 
 	switch (buf[0]) {
 
