@@ -1,12 +1,13 @@
 CC = gcc
-FLAGS = -g -Wall -I$(INC) $(CFLAGS)
+FLAGS = -g -Wall $(INC) $(CFLAGS)
 CFLAGS =
 LDFLAGS = -lssh -ldl -lcrypt
 AR = ar
 
 SRC = src
-INC = include
+INC = -Iinclude -I$(LIB)/include
 BLD = build
+LIB = lib/config-tool
 
 SRCS = mem.c log.c users.c handle_user.c server.c
 SOURCES = $(SRCS:%.c=$(SRC)/%.c)
@@ -15,19 +16,26 @@ OUT = testing
 
 
 
-all:	$(SOURCES) $(OUT)
+all:	$(BLD) $(LIB)/config_tool.a $(SOURCES) $(OUT)
 
 $(OUT):	objs.a
 
-	$(CC) $(FLAGS) $(LDFLAGS) -o $(OUT) $(BLD)/objs.a config_tool.a
+	$(CC) $(FLAGS) $(LDFLAGS) -o $(OUT) $(BLD)/objs.a $(LIB)/config_tool.a
 
 objs.a:	$(OBJ)
 
-	$(AR) cr $(BLD)/objs.a $(OBJ) $(LIB)
+	$(AR) cr $(BLD)/objs.a $(OBJ)
 
+$(LIB)/config_tool.a: $(LIB)
+
+	cd $(LIB); make
+	
 $(BLD)/%.o: $(SRC)/%.c
 
 	$(CC) -c $(FLAGS) -o $@ $< 
+
+$(BLD):
+	mkdir $(BLD)
 
 debug:	clean
 
