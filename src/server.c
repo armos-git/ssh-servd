@@ -255,11 +255,9 @@ static	void	manage_users(const char *cmd) {
 
 int	main(int argc, char **argv) {
 
-	users_t	*users;
 	pid_t new_user;
 	ssh_bind sshbind;
 	ssh_session session;
-	int index;
 	char c, *u_cmd;
 	const char opts[] = "f:Du:";
 	int opt_conf, opt_daemon, opt_users;
@@ -309,8 +307,6 @@ int	main(int argc, char **argv) {
 
 	serv_save_state();
 
-	users = users_create();
-	users_init(users);
 	ssh_init();
 
 	sshbind = ssh_bind_new();
@@ -349,35 +345,27 @@ int	main(int argc, char **argv) {
 			continue;
 		}
 
-		index = users_add(users, session);
-		if (index == USERS_FULL) {
-			serv_log_warning("No more users allowd! Dropping ssh connection.");
-			ssh_disconnect(session);
-			ssh_free(session);
-			continue;
-		}
 
-		serv_log("%s established connection", users[index].ip);
+		serv_log("%s established connection", users_resolve_ip(session));
 
 		/* fork the new user */
 		new_user = fork();
 		if (new_user < 0) {
 			serv_log_error("Forking new user failed: fork(): %s", strerror(errno));
-			users_close(users[index]);
+			users_close(session);
 			continue;
 		}
 
 		if (!new_user) {
 			/* child */
 			ssh_bind_free(sshbind); // close server in child
-			handle_user(index); // will never return
+			handle_user(session); // will never return
 		}
 
 		/* parrent */
-		users[index].pid = new_user;
 
 		/* free resources in parent */
-		users_free(users[index]);
+		ssh_free(session);
 	}
 
 	if (serv_term_sig)
@@ -387,7 +375,6 @@ serv_terminate:
 	serv_log("Shutdown!");
 
 	ssh_bind_free(sshbind);
-	users_destroy();
 	serv_free_log();
 
 	ssh_finalize();

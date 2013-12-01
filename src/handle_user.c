@@ -14,8 +14,7 @@
 #include <libssh/callbacks.h>
 
 #define	LOG_MODULE_NAME		"SSH Server"
-#define	SERV_POLL_TIMEOUT	60000 // ms
-#define SERV_READ_BUF		2048
+#define USER_READ_BUF		2048
 
 #include "server.h"
 #include "log.h"
@@ -23,32 +22,37 @@
 #include "users.h"
 #include "shell_module.h"
 
-static ssh_channel		handle_user_chan;
-static users_t			*handle_user_users;
-static int 			handle_user_index;
-static char			*handle_user_buf;
-static void			*handle_user_hndl;
+static int			user_running;
+static ssh_session		user_session;
+static ssh_channel		user_chan;
+static char			*user_buf;
+static void			*user_hndl;
 static shell_callbacks_t	shell_cb;
 
-
+static char		*user_ip;
+static char		*user_uname;
 
 
 void	handle_user_unload_shell() {
 
-	dlclose(handle_user_hndl);
+	dlclose(user_hndl);
 }
 
 /* Clean server child termination */
 void	handle_user_terminate() {
 
-	users_close(handle_user_users[handle_user_index]);
-	users_detach(handle_user_users);
+	if (user_uname != NULL)
+		free(user_uname);
+	if (user_ip != NULL)
+		free(user_ip);
+
+	users_close(user_session);
 	_exit(EXIT_FAILURE);
 }
 
 void	handle_user_terminate_shell() {
 
-	free(handle_user_buf);
+	free(user_buf);
 	handle_user_unload_shell();
 	handle_user_terminate();
 }
@@ -57,11 +61,18 @@ void	handle_user_write(void *data, uint32_t len) {
 
 	int rc;
 
-	rc = ssh_channel_write(handle_user_chan, data, len);
+	rc = ssh_channel_write(user_chan, data, len);
 	if (rc == SSH_ERROR) {
-		serv_log_error("%s channel write failed. ssh_channel_write(): %s", handle_user_users[handle_user_index].ip, ssh_get_error(handle_user_users[handle_user_index].ses));
+		serv_log_error("%s channel write failed. ssh_channel_write(): %s", user_ip, ssh_get_error(user_session));
 		handle_user_terminate_shell();
 	}
+}
+
+
+void	handle_user_exit() {
+
+	serv_log("User %s (%s) has logged out", user_uname, user_ip);
+	handle_user_terminate_shell();
 }
 
 
@@ -73,49 +84,57 @@ void	handle_user_load_shell() {
 
 	slen = strlen(serv_options.modules_dir) + strlen(serv_options.shell) + 2;
 	module_name = memalloc(slen);
+	if (module_name == NULL)
+		handle_user_terminate();
+
 	snprintf(module_name, slen, "%s/%s", serv_options.modules_dir, serv_options.shell);
 	
-	handle_user_hndl = dlopen(module_name, RTLD_LAZY);
-	if (handle_user_hndl == NULL) {
-		serv_log_error("Cannot load shell module %s", module_name);
+	user_hndl = dlopen(module_name, RTLD_LAZY);
+	if (user_hndl == NULL) {
+		serv_log_error("User %s (%s): Cannot load shell module %s", user_uname, user_ip, module_name);
 		free(module_name);
 		handle_user_terminate();
 	}
 
-	void (*shell_init)(shell_callbacks_t *a) = dlsym(handle_user_hndl, "shell_init");
+	void (*shell_init)(shell_callbacks_t *a) = dlsym(user_hndl, "shell_init");
 	if (shell_init == NULL) {
-		serv_log_error("Cannot load 'shell_init()' frome module %s", module_name);
+		serv_log_error("User %s (%s): Cannot load 'shell_init()' frome module %s", user_uname, user_ip, module_name);
 		free(module_name);
 		handle_user_terminate();
 	}	
 
-	shell_cb.ip_addr = handle_user_users[handle_user_index].ip;
+	shell_cb.ip_addr = user_ip;
+	shell_cb.uname = user_uname;
 	shell_cb.shell_read = NULL;
 	shell_cb.shell_write = &handle_user_write;
 	shell_cb.shell_log = &__serv_log;
-	shell_cb.shell_exit = &handle_user_terminate_shell;
+	shell_cb.shell_exit = &handle_user_exit;
 	shell_init(&shell_cb);
 
 	free(module_name);
 }
 
 /* Server child to handle a newly connected user */
-void	handle_user(int x) {
+void	handle_user(ssh_session session) {
 
 	ssh_message sshmsg;
-	ssh_session session;
 	int auth, shell, retry;
 	int rc;
-	const char *usr, *pass;
-	const char *ip;
+	const char *usr, *pass, *ip;
 
-	handle_user_index = x;
-	handle_user_users = users_attach();
-	session = users_get_session(handle_user_users[x]);
-	ip = users_get_ip(handle_user_users[x]);
+	user_uname = NULL;
+	user_ip = NULL;
+	user_session = session;
+	ip = users_resolve_ip(session);
 
+	user_ip = memalloc(strlen(ip) + 1);
+	if (user_ip == NULL)
+		handle_user_terminate();
+
+	strcpy(user_ip, ip);
+	
 	if (ssh_handle_key_exchange(session) != SSH_OK) {
-		serv_log_error("ssh_handle_key_exchange(): %s", ssh_get_error(session));
+		serv_log_error("%s: Error while exchanging keys. ssh_handle_key_exchange(): %s", user_ip, ssh_get_error(session));
 		handle_user_terminate();
 	}
 
@@ -128,7 +147,7 @@ void	handle_user(int x) {
 
 		sshmsg = ssh_message_get(session);
 		if (sshmsg == NULL) {
-			serv_log_error("handle_user loop 1 ssh_message_get() faile: ", ssh_get_error(session));
+			serv_log_error("%s: handle_user() authenticate loop ssh_message_get() failed: ", user_ip, ssh_get_error(session));
 			break;
 		}
 
@@ -141,10 +160,15 @@ void	handle_user(int x) {
 				pass = ssh_message_auth_password(sshmsg);
 				if (users_auth(usr, pass)) {
 					auth = 1;
+					user_uname = memalloc(strlen(usr) + 1);
+					if (user_uname == NULL)
+						handle_user_terminate();
+					strcpy(user_uname, usr);
+
 					ssh_message_auth_reply_success(sshmsg, 0);
-					serv_log("%s loged in with username %s", ip, usr);
+					serv_log("%s loged in with username '%s'", user_ip, user_uname);
 				} else {
-					serv_log_warning("%s login failed with username %s", ip, usr);
+					serv_log_warning("%s login failed with username '%s'", user_ip, user_uname);
 					ssh_message_reply_default(sshmsg);
 				}
 				retry++;
@@ -164,13 +188,13 @@ void	handle_user(int x) {
 	} while (!auth);
 
 	if (!auth) {
-		serv_log_warning("%s login failed", ip);
+		serv_log_warning("%s login failed. Disconnecting...", user_ip);
 		handle_user_terminate();
 	}
 
 
 	/* wait for channel request from client */
-	handle_user_chan = 0;
+	user_chan = 0;
 	do {
 		sshmsg = ssh_message_get(session);
 		if (sshmsg == NULL)
@@ -180,7 +204,7 @@ void	handle_user(int x) {
 
 		  case SSH_REQUEST_CHANNEL_OPEN:
 			if (ssh_message_subtype(sshmsg) == SSH_CHANNEL_SESSION)
-				handle_user_chan = ssh_message_channel_request_open_reply_accept(sshmsg);
+				user_chan = ssh_message_channel_request_open_reply_accept(sshmsg);
 			break;
 		  default:
 			ssh_message_reply_default(sshmsg);
@@ -189,9 +213,9 @@ void	handle_user(int x) {
 
 		ssh_message_free(sshmsg);
 
-	} while ((sshmsg != NULL) && !handle_user_chan);
-	if (!handle_user_chan) {
-		serv_log_error("Error waiting for channel request from %s: %s", ip, ssh_get_error(session));
+	} while ((sshmsg != NULL) && !user_chan);
+	if (!user_chan) {
+		serv_log_error("Error waiting for channel request from %s: %s", user_ip, ssh_get_error(session));
 		handle_user_terminate();
 	}
 
@@ -216,7 +240,7 @@ void	handle_user(int x) {
 	
 	} while ((sshmsg != NULL) && !shell);
 	if (!shell) {
-		serv_log_error("Error waiting for shell request from %s: %s", ip, ssh_get_error(session));
+		serv_log_error("Error waiting for shell request from %s: %s", user_ip, ssh_get_error(session));
 		handle_user_terminate();
 	}
 	
@@ -224,29 +248,32 @@ void	handle_user(int x) {
 	handle_user_load_shell();
 
 	/* setup a read buffer */
-	handle_user_buf = memalloc(SERV_READ_BUF);
-	if (handle_user_buf == NULL) {
+	user_buf = memalloc(USER_READ_BUF);
+	if (user_buf == NULL) {
 		handle_user_unload_shell();
 		handle_user_terminate();
 	}
 
-	while (1) {
-		rc = ssh_channel_read(handle_user_chan, handle_user_buf, SERV_READ_BUF, 0);
+	user_running = 1;
+	while (user_running) {
+		rc = ssh_channel_read(user_chan, user_buf, USER_READ_BUF, 0);
 		switch (rc) {
 		  case SSH_OK:
 			break;
 		  case SSH_AGAIN:
+			if (!ssh_is_connected(session))
+				user_running = 0;
 			continue;
 		  case SSH_ERROR: {
-			serv_log_error("%s read channel failed. ssh_channel_read(): %s", handle_user_users[handle_user_index].ip, ssh_get_error(session));
+			serv_log_error("%s read channel failed. ssh_channel_read(): %s", user_ip, ssh_get_error(session));
 			handle_user_terminate_shell();
 		  }
 		}
 
 		if (shell_cb.shell_read != NULL)
-			shell_cb.shell_read(handle_user_buf, rc);
+			shell_cb.shell_read(user_buf, rc);
 	}
 
-	
+	serv_log("%s has disconnected.", user_ip);
 	handle_user_terminate_shell();
 }
