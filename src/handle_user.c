@@ -127,8 +127,10 @@ void	handle_user(int x) {
 			break;
 
 		sshmsg = ssh_message_get(session);
-		if (sshmsg == NULL)
+		if (sshmsg == NULL) {
+			serv_log_error("handle_user loop 1 ssh_message_get() faile: ", ssh_get_error(session));
 			break;
+		}
 
 		switch (ssh_message_type(sshmsg)) {
 		  case SSH_REQUEST_AUTH:

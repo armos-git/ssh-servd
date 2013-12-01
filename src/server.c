@@ -147,7 +147,9 @@ static	void	daemonize() {
        	/* Close out the standard file descriptors */
        	close(STDIN_FILENO);
        	close(STDOUT_FILENO);
+#ifndef SERV_DEBUG
        	close(STDERR_FILENO);	
+#endif
 
 	/* record server pid */
 	mypid = getpid();

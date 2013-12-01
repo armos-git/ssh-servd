@@ -47,9 +47,13 @@ int	__serv_log(int type, const char *module, const char *msg, ...) {
 	struct tm *ptm;
 	va_list ap;
 
+#ifdef SERV_DEBUG
+	f = stderr;
+#else
 	f = fopen(log_file, "a");
 	if (f == NULL)
 		return 0;
+#endif
 
 	gettimeofday(&tv, NULL);
 	ptm = localtime(&tv.tv_sec);
@@ -79,6 +83,9 @@ int	__serv_log(int type, const char *module, const char *msg, ...) {
 	fprintf(f, "\n");
 	
 	fflush(f);
+
+#ifndef SERV_DEBUG
 	fclose(f);
+#endif
 	return 1;
 }
