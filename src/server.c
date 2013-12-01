@@ -316,7 +316,7 @@ int	main(int argc, char **argv) {
 	sshbind = ssh_bind_new();
 	if (sshbind == NULL) {
 		serv_log_fatal("ssh_bind_new() failed");
-		exit(EXIT_FAILURE);
+		goto serv_terminate;
 	}
 
 	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_DSAKEY, serv_options.dsakey);
@@ -326,18 +326,19 @@ int	main(int argc, char **argv) {
 
 	if (ssh_bind_listen(sshbind) < 0) {
 		serv_log_fatal("ssh_bind_listen(): %s", ssh_get_error(sshbind));
-		exit(EXIT_FAILURE);
+		goto serv_terminate;
 	}
 
 
 	/* Server main loop */
 
 	serv_running = 1;
+	serv_term_sig = 0;
 	while (serv_running) {
 		session = ssh_new();
 		if (session == NULL) {
 			serv_log_fatal("ssh_new() failed");
-			exit(EXIT_FAILURE);
+			break;
 		}
 
 		ssh_set_blocking(session, 1);
@@ -379,7 +380,11 @@ int	main(int argc, char **argv) {
 		users_free(users[index]);
 	}
 
-	serv_log_warning("Received signal %i", serv_term_sig);
+	if (serv_term_sig)
+		serv_log_warning("Received signal %i", serv_term_sig);
+
+serv_terminate:
+	serv_log("Shutdown!");
 
 	ssh_bind_free(sshbind);
 	users_destroy();
@@ -387,6 +392,6 @@ int	main(int argc, char **argv) {
 
 	ssh_finalize();
 
-	return 0;
+	exit(EXIT_FAILURE);
 }
 
