@@ -1,4 +1,4 @@
-/* This file contains ssh-server functions to handle newly conencted users */
+/* This file contains ssh-servd functions to handle newly conencted users */
 
 #ifndef _GNU_SOURCE
   #define _GNU_SOURCE

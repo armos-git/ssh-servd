@@ -1,4 +1,4 @@
-/* This file contains all ssh-server user managment functions */
+/* This file contains all ssh-servd user managment functions */
 
 #ifndef _GNU_SOURCE
   #define _GNU_SOURCE
@@ -11,7 +11,6 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <termios.h>

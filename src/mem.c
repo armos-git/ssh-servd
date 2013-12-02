@@ -1,4 +1,4 @@
-/* This files contains ssh-server memory managment functions */
+/* This files contains ssh-servd memory managment functions */
 
 #ifndef _GNU_SOURCE
   #define _GNU_SOURCE
