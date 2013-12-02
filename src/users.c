@@ -134,6 +134,8 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 			close(fd);
 			return 0;
 		}
+
+		free(ver);
 	}
 
 	close(fd);
