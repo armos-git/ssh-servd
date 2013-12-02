@@ -15,6 +15,8 @@ typedef	struct {
 } users_info_t;
 
 
+extern	int		read_tty(void *data, size_t len, int noecho);
+
 extern	void		users_close(ssh_session ses);
 
 extern	char		*users_resolve_ip(ssh_session ses);

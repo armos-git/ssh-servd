@@ -16,8 +16,10 @@
 #include <libssh/server.h>
 
 #define	LOG_MODULE_NAME		"SSH Server"
+#define PHRASE_MAX		50
 
 #include "config_tool.h"
+#include "mem.h"
 #include "log.h"
 #include "users.h"
 #include "handle_user.h"
@@ -273,13 +275,19 @@ static	void	generate_keys(const char *type) {
 	char valid_dsa_bitlen[] = "DSA: 1024, 2048, 3072";
 	char *phrase, *outfile, *valid_bitlen;
 	ssh_key key;
-	int len;
+	int len, rc;
 	int key_type = SSH_KEYTYPE_UNKNOWN;
 
 	ssh_init();
 
 	phrase = NULL;
 	outfile = NULL;
+
+	phrase = memalloc(PHRASE_MAX);
+	if (phrase == NULL) {
+		fprintf(stderr, "Error allocating memory!\n");
+		goto terminate;
+	}
 
 	if (!strcmp(type, "rsa")) {
 		key_type = SSH_KEYTYPE_RSA;
@@ -300,7 +308,10 @@ static	void	generate_keys(const char *type) {
 
 	printf("Enter passphrase: ");
 	fflush(stdout);
-	scanf("%ms", &phrase);
+	rc = read_tty(phrase, PHRASE_MAX - 1, 1);
+	if (rc < 0)
+		goto terminate;
+	phrase[rc-1] = 0;
 
 	printf("Ouput file: ");
 	fflush(stdout);
@@ -312,11 +323,12 @@ static	void	generate_keys(const char *type) {
 	if (ssh_pki_generate(key_type, len, &key) != SSH_OK)
 		goto terminate;
 
-	if (ssh_pki_export_privkey_file(key, phrase, NULL, NULL, outfile) != SSH_OK) {
+	if (ssh_pki_export_privkey_file(key, phrase[0] ? phrase : NULL, NULL, NULL, outfile) != SSH_OK) {
 		ssh_key_free(key);
 		goto terminate;
 	}
 
+	memset(phrase, 0, PHRASE_MAX);
 	ssh_key_free(key);
 	printf("Done. Private key saved to file: %s\n", outfile);
 

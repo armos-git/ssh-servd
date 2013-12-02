@@ -171,7 +171,7 @@ void	handle_user(ssh_session session) {
 					ssh_message_auth_reply_success(sshmsg, 0);
 					serv_log("%s loged in with username '%s'", user_ip, user_uname);
 				} else {
-					serv_log_warning("%s login failed with username '%s'", user_ip, user_uname);
+					serv_log_warning("%s login failed with username '%s'", user_ip, usr);
 					ssh_message_reply_default(sshmsg);
 				}
 				retry++;

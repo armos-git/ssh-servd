@@ -52,10 +52,16 @@ char	*users_resolve_ip(ssh_session ses) {
 
 /* Reads input directly from process tty
 * Returns -1 on error */
-static	int	read_tty(int fd, void *data, size_t len, int noecho) {
+int	read_tty(void *data, size_t len, int noecho) {
 
-	int rc;
+	int rc, fd;
 	struct termios oldt, newt;
+
+	fd = open("/dev/tty", O_RDWR);
+	if (fd < 0) {
+		fprintf(stderr, "Error opening /dev/tty!\n");
+		return -1;
+	}
 
 	if (noecho) {
 		tcgetattr(fd, &oldt);
@@ -73,6 +79,7 @@ static	int	read_tty(int fd, void *data, size_t len, int noecho) {
 		printf("\n");
 	}
 
+	close(fd);
 	return rc;
 }
 
@@ -80,47 +87,35 @@ static	int	read_tty(int fd, void *data, size_t len, int noecho) {
 * Returns 0 on error */
 static	int	users_config_prompt(users_info_t *info, int verify) {
 
-	int fd, rc, rc2;
+	int rc, rc2;
 	char *ver;
 
-	fd = open("/dev/tty", O_RDWR);
-	if (fd < 0) {
-		fprintf(stderr, "Error opening /dev/tty!\n");
-		return 0;
-	}
 
 	printf("Username: ");
 	fflush(stdout);
-	rc = read_tty(fd, info->user, USERS_MAX_NAME - 1, 0);
-	if (rc < 0) {
-		close(fd);
+	rc = read_tty(info->user, USERS_MAX_NAME - 1, 0);
+	if (rc < 0)
 		return 0;
-	}
 	info->user[rc-1] = 0;
 
 	printf("Password: ");
 	fflush(stdout);
-	rc = read_tty(fd, info->pass, USERS_MAX_PASS - 1, 1);
-	if (rc < 0) {
-		close(fd);
+	rc = read_tty(info->pass, USERS_MAX_PASS - 1, 1);
+	if (rc < 0)
 		return 0;
-	}
 	info->pass[rc-1] = 0;
 
 	if (verify) {
 		ver = malloc(rc);
-		if (ver == NULL) {
-			close(fd);
+		if (ver == NULL)
 			return 0;
-		}
 
 		printf("Verify Password: ");
 		fflush(stdout);
 
-		rc2 = read_tty(fd, ver, rc, 1);
+		rc2 = read_tty(ver, rc, 1);
 		if (rc < 0) {
 			free(ver);
-			close(fd);
 			return 0;
 		}
 		rc--;
@@ -130,14 +125,11 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 		if ((rc != rc2) || (strcmp(info->pass, ver))) {
 			printf("\nPasswords don't match!\n");
 			free(ver);
-			close(fd);
 			return 0;
 		}
 
 		free(ver);
 	}
-
-	close(fd);
 
 	printf("Enter user security level number: ");
 	fflush(stdout);
