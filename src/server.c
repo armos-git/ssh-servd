@@ -180,8 +180,8 @@ static	int	load_config(const char *filename) {
 
 	config_bind_var(&conf, "listen", "%s", serv_options.listen_addr);
 	config_bind_var(&conf, "port", "%i", &serv_options.listen_port);
-	config_bind_var(&conf, "DSA_Key", "%s", serv_options.dsakey);
-	config_bind_var(&conf, "RSA_Key", "%s", serv_options.rsakey);
+	config_bind_var(&conf, "dsa_key", "%s", serv_options.dsakey);
+	config_bind_var(&conf, "rsa_key", "%s", serv_options.rsakey);
 	config_bind_var(&conf, "log", "%s", serv_options.log_file);
 	config_bind_var(&conf, "users", "%s", serv_options.users_file);
 	config_bind_var(&conf, "modules_dir", "%s", serv_options.modules_dir);
@@ -253,15 +253,82 @@ static	void	manage_users(const char *cmd) {
 	exit(EXIT_SUCCESS);
 }
 
+/* Generate server private keys */
+static	void	generate_keys(const char *type) {
+
+	char valid_rsa_bitlen[] = "RSA: 1024, 2048, 4096";
+	char valid_dsa_bitlen[] = "DSA: 1024, 2048, 3072";
+	char *phrase, *outfile, *valid_bitlen;
+	ssh_key key;
+	int len;
+	int key_type = SSH_KEYTYPE_UNKNOWN;
+
+	ssh_init();
+
+	phrase = NULL;
+	outfile = NULL;
+
+	if (!strcmp(type, "rsa")) {
+		key_type = SSH_KEYTYPE_RSA;
+		valid_bitlen = valid_rsa_bitlen;
+	}
+	if (!strcmp(type, "dsa")) {
+		key_type = SSH_KEYTYPE_DSS;
+		valid_bitlen = valid_dsa_bitlen;
+	}
+	if (key_type == SSH_KEYTYPE_UNKNOWN) {
+		printf("Unknown key type: %s\n", type);
+		goto terminate;
+	}
+
+	printf("Enter bit length (%s): ", valid_bitlen);
+	fflush(stdout);
+	scanf("%i", &len);
+
+	printf("Enter passphrase: ");
+	fflush(stdout);
+	scanf("%ms", &phrase);
+
+	printf("Ouput file: ");
+	fflush(stdout);
+	scanf("%ms", &outfile);
+
+	printf("Generating...");
+	fflush(stdout);
+
+	if (ssh_pki_generate(key_type, len, &key) != SSH_OK)
+		goto terminate;
+
+	if (ssh_pki_export_privkey_file(key, phrase, NULL, NULL, outfile) != SSH_OK) {
+		ssh_key_free(key);
+		goto terminate;
+	}
+
+	ssh_key_free(key);
+	printf("Done. Private key saved to file: %s\n", outfile);
+
+terminate:
+	free(phrase);
+	free(outfile);
+
+	ssh_finalize();
+
+	exit(EXIT_SUCCESS);
+}
+
+
 int	main(int argc, char **argv) {
 
 	pid_t new_user;
 	ssh_bind sshbind;
 	ssh_session session;
-	char c, *u_cmd;
-	const char opts[] = "f:Du:";
-	int opt_conf, opt_daemon, opt_users;
+	char c, *cmd;
+	const char opts[] = "f:Du:k:";
+	int opt_conf, opt_daemon, opt_users, opt_keygen;
 
+
+	if (ssh_version(SSH_VERSION_INT(0,6,0)) == NULL)
+		fatal("Required at least libssh version 0.6.0!", 0);
 
 	/* parse options */
 	if (argc == 1)
@@ -271,6 +338,7 @@ int	main(int argc, char **argv) {
 	opt_conf = 0;
 	opt_daemon = 0;
 	opt_users = 0;
+	opt_keygen = 0;
 	while ((c = getopt(argc, argv, opts)) != -1) {
 		switch (c) {
 		  case 'f':
@@ -283,18 +351,26 @@ int	main(int argc, char **argv) {
 			break;
 		  case 'u':
 			opt_users = 1;
-			u_cmd = optarg;
+			cmd = optarg;
+			break;
+		  case	'k':
+			opt_keygen = 1;
+			cmd = optarg;
 			break;
 		  default:
 			exit(EXIT_FAILURE);
 		}
 	}
 
+	
+	if (opt_keygen)
+		generate_keys(cmd);
+
 	if (!opt_conf)
 		fatal("No config file specified!", 0);
 
 	if (opt_users)
-		manage_users(u_cmd);
+		manage_users(cmd);
 
 	serv_set_logfile(serv_options.log_file);
 	serv_log("Boot");

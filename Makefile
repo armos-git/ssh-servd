@@ -1,7 +1,7 @@
 CC = gcc
 FLAGS = -g -Wall $(INC) $(CFLAGS)
 CFLAGS =
-LDFLAGS = -lssh -ldl -lcrypt
+LDFLAGS = -L/usr/lib -lssh -ldl -lcrypt
 AR = ar
 
 SRC = src

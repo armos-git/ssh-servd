@@ -20,6 +20,7 @@
 #include "log.h"
 #include "mem.h"
 #include "users.h"
+#include "handle_user.h"
 #include "shell_module.h"
 
 static int			user_running;
