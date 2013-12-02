@@ -12,7 +12,7 @@ LIB = lib/config-tool
 SRCS = mem.c log.c users.c handle_user.c server.c
 SOURCES = $(SRCS:%.c=$(SRC)/%.c)
 OBJ = $(SRCS:%.c=$(BLD)/%.o)
-OUT = testing
+OUT = ssh-serv
 
 
 

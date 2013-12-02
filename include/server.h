@@ -2,7 +2,7 @@
 #define SSH_SERVER_H
 
 #define	MAXFILE		256
-#define	MODULES		5
+//#define	MODULES		5
 #define PID_FILE	"/var/run/ssh-server.pid"
 
 /* Server configuration options */
@@ -15,7 +15,7 @@ typedef struct {
 	char	users_file[MAXFILE];
 	char	modules_dir[MAXFILE];
 	char	shell[MAXFILE];
-	char	modules[MODULES][MAXFILE];
+//	char	modules[MODULES][MAXFILE];
 } serv_options_t;
 
 extern	serv_options_t		serv_options;

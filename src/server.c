@@ -33,7 +33,11 @@ int			serv_term_sig;
 
 static	void	print_usage() {
 
-	fprintf(stderr, "Usage:\n");
+	fprintf(stderr, "Usage: ssh-servd [-fDku]\n\n");
+	fprintf(stderr, "  -f         : config file\n");
+	fprintf(stderr, "  -D         : run as daemon\n");
+	fprintf(stderr, "  -k rsa,dsa : generate rsa or dsa private keys\n");
+	fprintf(stderr, "  -u add     : adds new users\n\n");
 	exit(EXIT_FAILURE);
 }
 
@@ -164,8 +168,8 @@ static	void	daemonize() {
 static	int	load_config(const char *filename) {
 
 	config_t conf;
-	void *ptr;
-	int i;
+	//void *ptr;
+	//int i;
 
 	memset(&serv_options, 0, sizeof(serv_options));
 
@@ -186,9 +190,11 @@ static	int	load_config(const char *filename) {
 	config_bind_var(&conf, "users", "%s", serv_options.users_file);
 	config_bind_var(&conf, "modules_dir", "%s", serv_options.modules_dir);
 	config_bind_var(&conf, "shell", "%s", serv_options.shell);
+/*
 	ptr = config_bind_var(&conf, "modules", "%s", NULL);
 	for (i = 0; i < MODULES; i++)
 		ptr = config_addto_var(ptr, &serv_options.modules[i]);
+*/
 
 	if (config_parse(&conf) != CONFIG_OK) {
 		fprintf(stderr, "Config error: %s\n", config_get_error(&conf));
