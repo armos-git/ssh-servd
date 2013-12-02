@@ -277,8 +277,8 @@ void	users_config_rem() {
 }
 
 /* auths user
-* Returns 1 on success */
-int	users_auth(const char *user, const char *pass) {
+* Returns 0 on fail or the user level from the config  */
+unsigned int	users_auth(const char *user, const char *pass) {
 
 	int rc, i, j, s;
 	FILE *f;
@@ -342,5 +342,5 @@ int	users_auth(const char *user, const char *pass) {
 		return 0;
 
 	/* Success! */
-	return 1;
+	return info.level;
 }

@@ -31,6 +31,7 @@ static shell_callbacks_t	shell_cb;
 
 static char		*user_ip;
 static char		*user_uname;
+static unsigned	int	user_level;
 
 
 void	handle_user_unload_shell() {
@@ -105,6 +106,7 @@ void	handle_user_load_shell() {
 
 	shell_cb.ip_addr = user_ip;
 	shell_cb.uname = user_uname;
+	shell_cb.level = user_level;
 	shell_cb.shell_read = NULL;
 	shell_cb.shell_write = &handle_user_write;
 	shell_cb.shell_log = &__serv_log;
@@ -158,7 +160,7 @@ void	handle_user(ssh_session session) {
 			  case SSH_AUTH_METHOD_PASSWORD:
 				usr = ssh_message_auth_user(sshmsg);
 				pass = ssh_message_auth_password(sshmsg);
-				if (users_auth(usr, pass)) {
+				if ((user_level = users_auth(usr, pass))) {
 					auth = 1;
 					user_uname = memalloc(strlen(usr) + 1);
 					if (user_uname == NULL)

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include <unistd.h>
 
 #include "shell_module.h"
@@ -11,8 +12,9 @@ static	int  	(*shell_log)(int type, const char *module, const char *msg, ...);
 static	void	(*shell_exit)(void);
 static	void	shell_read(void *data, unsigned int len);
 
-const	static	char *ip_addr;
-const	static	char *username;
+const	static	char 	*ip_addr;
+const	static	char 	*username;
+static	unsigned int 	level;
 
 
 void	shell_init(shell_callbacks_t *cb) {
@@ -23,6 +25,19 @@ void	shell_init(shell_callbacks_t *cb) {
 	shell_exit = cb->shell_exit;
 	ip_addr = cb->ip_addr;
 	username = cb->uname;
+	level = cb->level;
+}
+
+void	shell_printf(const char *format, ...) {
+
+	va_list ap;
+	char *buf = alloca(4096);
+
+	va_start(ap, format);
+	vsnprintf(buf, 4096, format, ap);
+	va_end(ap);
+
+	shell_write((void *)buf, strlen(buf));
 }
 
 void	shell_read(void *data, unsigned int len) {
@@ -39,12 +54,7 @@ void	shell_read(void *data, unsigned int len) {
 		shell_write("\r\n", 2);
 		break;
 	  default:
-		shell_write(ip_addr, strlen(ip_addr));
-		shell_write(" ", 1);
-		shell_write(username, strlen(username));
-		shell_write(": ", 2);
-		shell_write(data, len);
-		shell_write("\r\n", 2);
+		shell_printf("user %s : ip %s : level %u says: %.*s\r\n", username, ip_addr, level, len, data);
 		break;
 	}
 }

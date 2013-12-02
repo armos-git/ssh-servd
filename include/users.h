@@ -15,14 +15,14 @@ typedef	struct {
 } users_info_t;
 
 
-extern	void	users_close(ssh_session ses);
+extern	void		users_close(ssh_session ses);
 
-extern	char	*users_resolve_ip(ssh_session ses);
+extern	char		*users_resolve_ip(ssh_session ses);
 
-extern	void	users_config_new();
+extern	void		users_config_new();
 
-extern	void	users_config_rem();
+extern	void		users_config_rem();
 
-extern	int	users_auth(const char *user, const char *pass);
+extern	unsigned int	users_auth(const char *user, const char *pass);
 
 #endif /* USERS_H */
