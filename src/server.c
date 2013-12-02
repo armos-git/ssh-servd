@@ -43,7 +43,7 @@ static	void	print_usage() {
 }
 
 /* Prints a fatal message to stderr */
-static	void	fatal(const char *msg, ...) {
+static	void	fatal(int abort, const char *msg, ...) {
 
 	va_list ap;
 
@@ -55,7 +55,8 @@ static	void	fatal(const char *msg, ...) {
 	
 	fprintf(stderr, "\n");
 
-	_exit(EXIT_FAILURE);
+	if (abort)
+		_exit(EXIT_FAILURE);
 }
 
 /* SIGSEGV handler */
@@ -136,7 +137,7 @@ static	void	daemonize() {
        	/* Fork off the parent process */
        	pid = fork();
        	if (pid < 0) 
-		fatal("fork(): %s", strerror(errno));
+		fatal(1, "fork(): %s", strerror(errno));
 
 	/* Terminate parrent */
        	if (pid > 0)
@@ -148,11 +149,11 @@ static	void	daemonize() {
        	/* Create a new SID for the child process */
        	sid = setsid();
        	if (sid < 0)
-		fatal("setsid(): %s", strerror(errno));
+		fatal(1, "setsid(): %s", strerror(errno));
         
        	/* Change the current working directory */
        	if ((chdir("/")) < 0)
-		fatal("chdir(): %s", strerror(errno));
+		fatal(1, "chdir(): %s", strerror(errno));
         
        	/* Close out the standard file descriptors */
        	close(STDIN_FILENO);
@@ -340,7 +341,7 @@ int	main(int argc, char **argv) {
 
 
 	if (ssh_version(SSH_VERSION_INT(0,6,0)) == NULL)
-		fatal("Required at least libssh version 0.6.0!");
+		fatal(1, "Required at least libssh version 0.6.0!");
 
 	/* parse options */
 	if (argc == 1)
@@ -379,7 +380,7 @@ int	main(int argc, char **argv) {
 		generate_keys(cmd);
 
 	if (!opt_conf)
-		fatal("No config file specified!");
+		fatal(1, "No config file specified!");
 
 	if (opt_users)
 		manage_users(cmd);
@@ -388,7 +389,7 @@ int	main(int argc, char **argv) {
 	serv_log("Boot");
 
 	if (!serv_setup_signals())
-		fatal("serv_setup_signals(): %s", strerror(errno));
+		fatal(1, "serv_setup_signals(): %s", strerror(errno));
 
 	if (opt_daemon)
 		daemonize();
@@ -400,7 +401,7 @@ int	main(int argc, char **argv) {
 	sshbind = ssh_bind_new();
 	if (sshbind == NULL) {
 		serv_log_fatal("ssh_bind_new() failed");
-		fatal("ssh_bind_new() failed");
+		fatal(0, "ssh_bind_new() failed");
 		goto serv_terminate;
 	}
 
@@ -411,7 +412,7 @@ int	main(int argc, char **argv) {
 
 	if (ssh_bind_listen(sshbind) < 0) {
 		serv_log_fatal("ssh_bind_listen(): %s", ssh_get_error(sshbind));
-		fatal("ssh_bind_listen(): %s", ssh_get_error(sshbind));
+		fatal(0, "ssh_bind_listen(): %s", ssh_get_error(sshbind));
 		goto serv_terminate;
 	}
 
@@ -424,7 +425,7 @@ int	main(int argc, char **argv) {
 		session = ssh_new();
 		if (session == NULL) {
 			serv_log_fatal("ssh_new() failed");
-			fatal("ssh_new() failed");
+			fatal(0, "ssh_new() failed");
 			break;
 		}
 
@@ -432,7 +433,7 @@ int	main(int argc, char **argv) {
 
 		if (ssh_bind_accept(sshbind, session) != SSH_OK) {
 			serv_log_error("Error accepting ssh connection: ssh_bind_accept(): %s", ssh_get_error(sshbind));
-			fatal("Error accepting ssh connection: ssh_bind_accept(): %s", ssh_get_error(sshbind));
+			fatal(0, "Error accepting ssh connection: ssh_bind_accept(): %s", ssh_get_error(sshbind));
 			ssh_free(session);
 			continue;
 		}
@@ -444,7 +445,7 @@ int	main(int argc, char **argv) {
 		new_user = fork();
 		if (new_user < 0) {
 			serv_log_error("Forking new user failed: fork(): %s", strerror(errno));
-			fatal("Forking new user failed: fork(): %s", strerror(errno));
+			fatal(0, "Forking new user failed: fork(): %s", strerror(errno));
 			users_close(session);
 			continue;
 		}
