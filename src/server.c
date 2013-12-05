@@ -35,6 +35,7 @@ int			serv_term_sig;
 static	void	print_usage() {
 
 	fprintf(stderr, "Usage: ssh-servd [-fDku]\n\n");
+	fprintf(stderr, "  -h         : prints this\n");
 	fprintf(stderr, "  -f         : config file\n");
 	fprintf(stderr, "  -D         : run as daemon\n");
 	fprintf(stderr, "  -k rsa,dsa : generate rsa or dsa private keys\n");
@@ -175,10 +176,7 @@ static	void	daemonize() {
 static	int	load_config(const char *filename) {
 
 	config_t conf;
-	//void *ptr;
-	//int i;
 
-	memset(&serv_options, 0, sizeof(serv_options));
 
 	if (config_init(&conf, filename) != CONFIG_OK) {
 		fprintf(stderr, "Config error: cannot load config file: %s\n", config_get_error(&conf));
@@ -196,12 +194,6 @@ static	int	load_config(const char *filename) {
 	config_bind_var(&conf, "log", "%s", serv_options.log_file);
 	config_bind_var(&conf, "users", "%s", serv_options.users_file);
 	config_bind_var(&conf, "modules_dir", "%s", serv_options.modules_dir);
-	config_bind_var(&conf, "shell", "%s", serv_options.shell);
-/*
-	ptr = config_bind_var(&conf, "modules", "%s", NULL);
-	for (i = 0; i < MODULES; i++)
-		ptr = config_addto_var(ptr, &serv_options.modules[i]);
-*/
 
 	if (config_parse(&conf) != CONFIG_OK) {
 		fprintf(stderr, "Config error: %s\n", config_get_error(&conf));
@@ -222,30 +214,15 @@ static	int	load_config(const char *filename) {
 		return 0;
 	}
 
-	if (!serv_options.dsakey[0]) {
-		fprintf(stderr, "Config error: please specify DSA key file!\n");
-		return 0;
-	}
-
-	if (!serv_options.rsakey[0]) {
-		fprintf(stderr, "Config error: please specify RSA key file!\n");
-		return 0;
-	}
 
 	if (!serv_options.log_file[0]) {
 		fprintf(stderr, "Config error: please specify log file!\n");
 		return 0;
 	}
 
-	if (!serv_options.users_file[0]) {
-		fprintf(stderr, "Config error: please specify users file!\n");
-		return 0;
-	}
+	if (!serv_options.users_file[0])
+		strncpy(serv_options.users_file, default_file(DEFAULT_USERS), sizeof(serv_options.users_file) - 1);
 
-	if (!serv_options.shell[0]) {
-		fprintf(stderr, "Config error: please specify shell module!\n");
-		return 0;
-	}
 
 	return 1;
 }
@@ -273,13 +250,18 @@ static	void	generate_keys(const char *type) {
 	char valid_dsa_bitlen[] = "DSA: 1024, 2048, 3072";
 	char *phrase, *outfile, *valid_bitlen;
 	ssh_key key;
-	int len;
+	int len, rc;
 	int key_type = SSH_KEYTYPE_UNKNOWN;
 
 	ssh_init();
 
 	phrase = NULL;
 	outfile = NULL;
+	phrase = malloc(USERS_MAX_PASS);
+	if (phrase == NULL) {
+		fatal(0, "Cannot allocate memory! malloc() failed: %s\n", strerror(errno));
+		goto terminate;
+	}
 
 	if (!strcmp(type, "rsa")) {
 		key_type = SSH_KEYTYPE_RSA;
@@ -300,7 +282,8 @@ static	void	generate_keys(const char *type) {
 
 	printf("Enter passphrase: ");
 	fflush(stdout);
-	scanf("%ms", &phrase);
+	rc = read_tty(phrase, USERS_MAX_PASS - 1, 1);
+	phrase[rc - 1] = 0;
 
 	printf("Ouput file: ");
 	fflush(stdout);
@@ -312,12 +295,14 @@ static	void	generate_keys(const char *type) {
 	if (ssh_pki_generate(key_type, len, &key) != SSH_OK)
 		goto terminate;
 
-	if (ssh_pki_export_privkey_file(key, phrase, NULL, NULL, outfile) != SSH_OK) {
+	if (ssh_pki_export_privkey_file(key, phrase[0] ? phrase : NULL, NULL, NULL, outfile) != SSH_OK) {
 		ssh_key_free(key);
 		goto terminate;
 	}
 
 	ssh_key_free(key);
+	if (phrase != NULL)
+		memset(phrase, 0, USERS_MAX_PASS);
 	printf("Done. Private key saved to file: %s\n", outfile);
 
 terminate:
@@ -336,26 +321,24 @@ int	main(int argc, char **argv) {
 	ssh_bind sshbind;
 	ssh_session session;
 	char c, *cmd;
-	const char opts[] = "f:Du:k:";
-	int opt_conf, opt_daemon, opt_users, opt_keygen;
+	const char opts[] = "f:Du:k:h";
+	int opt_config, opt_daemon, opt_users, opt_keygen;
 
 
 	if (ssh_version(SSH_VERSION_INT(0,6,0)) == NULL)
 		fatal(1, "Required at least libssh version 0.6.0!");
 
-	/* parse options */
-	if (argc == 1)
-		print_usage();
-
 	bad_addr = NULL;
-	opt_conf = 0;
 	opt_daemon = 0;
 	opt_users = 0;
 	opt_keygen = 0;
+	opt_config = 0;
+	memset(&serv_options, 0, sizeof(serv_options));
+
 	while ((c = getopt(argc, argv, opts)) != -1) {
 		switch (c) {
 		  case 'f':
-			opt_conf = 1;
+			opt_config = 1;
 			if (!load_config(optarg))
 				exit(EXIT_FAILURE);
 			break;
@@ -366,27 +349,31 @@ int	main(int argc, char **argv) {
 			opt_users = 1;
 			cmd = optarg;
 			break;
-		  case	'k':
+		  case 'k':
 			opt_keygen = 1;
 			cmd = optarg;
 			break;
+		  case 'h':
+			print_usage();
 		  default:
 			exit(EXIT_FAILURE);
 		}
 	}
 
+	if (!opt_config) {
+		if (!load_config(default_file(DEFAULT_CONFIG)))
+			exit(EXIT_FAILURE);
+	}
 	
 	if (opt_keygen)
 		generate_keys(cmd);
-
-	if (!opt_conf)
-		fatal(1, "No config file specified!");
 
 	if (opt_users)
 		manage_users(cmd);
 
 	serv_set_logfile(serv_options.log_file);
 	serv_log("Boot");
+
 
 	if (!serv_setup_signals())
 		fatal(1, "serv_setup_signals(): %s", strerror(errno));
@@ -405,8 +392,8 @@ int	main(int argc, char **argv) {
 		goto serv_terminate;
 	}
 
-	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_DSAKEY, serv_options.dsakey);
-	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_RSAKEY, serv_options.rsakey);
+	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_DSAKEY, serv_options.dsakey[0] ? serv_options.dsakey : default_file(DEFAULT_DSAKEY));
+	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_RSAKEY, serv_options.rsakey[0] ? serv_options.rsakey : default_file(DEFAULT_RSAKEY));
 	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDADDR, serv_options.listen_addr);
 	ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT, &serv_options.listen_port);
 

@@ -10,10 +10,13 @@ typedef	struct {
 	char user[USERS_MAX_NAME];
 	char pass[USERS_MAX_PASS];
 	char salt[USERS_MAX_SALT];
+	char module[256];
 	unsigned int level;
 
 } users_info_t;
 
+
+extern	int		read_tty(void *data, size_t len, int noecho);
 
 extern	void		users_close(ssh_session ses);
 
@@ -23,6 +26,6 @@ extern	void		users_config_new();
 
 extern	void		users_config_rem();
 
-extern	unsigned int	users_auth(const char *user, const char *pass);
+extern	unsigned int	users_auth(const char *user, const char *pass, char *module);
 
 #endif /* USERS_H */

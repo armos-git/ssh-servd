@@ -42,6 +42,7 @@ debug:	clean
 	make FLAGS='$(FLAGS) -D SERV_DEBUG'
 
 shell:
+	rm -rf shell_example.mod
 	$(CC) -shared -fPIC $(FLAGS) -o shell_example.mod $(SRC)/shell_example.c
 
 clean:

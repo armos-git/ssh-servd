@@ -52,10 +52,16 @@ char	*users_resolve_ip(ssh_session ses) {
 
 /* Reads input directly from process tty
 * Returns -1 on error */
-static	int	read_tty(int fd, void *data, size_t len, int noecho) {
+int	read_tty(void *data, size_t len, int noecho) {
 
-	int rc;
+	int fd, rc;
 	struct termios oldt, newt;
+
+	fd = open("/dev/tty", O_RDWR);
+	if (fd < 0) {
+		fprintf(stderr, "Error opening /dev/tty!\n");
+		return 0;
+	}
 
 	if (noecho) {
 		tcgetattr(fd, &oldt);
@@ -73,6 +79,7 @@ static	int	read_tty(int fd, void *data, size_t len, int noecho) {
 		printf("\n");
 	}
 
+	close(fd);
 	return rc;
 }
 
@@ -80,47 +87,36 @@ static	int	read_tty(int fd, void *data, size_t len, int noecho) {
 * Returns 0 on error */
 static	int	users_config_prompt(users_info_t *info, int verify) {
 
-	int fd, rc, rc2;
+	int rc, rc2;
+	int slen;
 	char *ver;
 
-	fd = open("/dev/tty", O_RDWR);
-	if (fd < 0) {
-		fprintf(stderr, "Error opening /dev/tty!\n");
-		return 0;
-	}
 
 	printf("Username: ");
 	fflush(stdout);
-	rc = read_tty(fd, info->user, USERS_MAX_NAME - 1, 0);
-	if (rc < 0) {
-		close(fd);
+	rc = read_tty(info->user, USERS_MAX_NAME - 1, 0);
+	if (rc < 0)
 		return 0;
-	}
 	info->user[rc-1] = 0;
 
 	printf("Password: ");
 	fflush(stdout);
-	rc = read_tty(fd, info->pass, USERS_MAX_PASS - 1, 1);
-	if (rc < 0) {
-		close(fd);
+	rc = read_tty(info->pass, USERS_MAX_PASS - 1, 1);
+	if (rc < 0)
 		return 0;
-	}
 	info->pass[rc-1] = 0;
 
 	if (verify) {
 		ver = malloc(rc);
-		if (ver == NULL) {
-			close(fd);
+		if (ver == NULL)
 			return 0;
-		}
 
 		printf("Verify Password: ");
 		fflush(stdout);
 
-		rc2 = read_tty(fd, ver, rc, 1);
+		rc2 = read_tty(ver, rc, 1);
 		if (rc < 0) {
 			free(ver);
-			close(fd);
 			return 0;
 		}
 		rc--;
@@ -130,16 +126,20 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 		if ((rc != rc2) || (strcmp(info->pass, ver))) {
 			printf("\nPasswords don't match!\n");
 			free(ver);
-			close(fd);
 			return 0;
 		}
 
 		free(ver);
 	}
 
-	close(fd);
 
-	printf("Enter user security level number: ");
+	printf("Enter user's shell module: ");
+	fflush(stdout);
+	fgets(info->module, 255, stdin);
+	slen = strlen(info->module);
+	info->module[ slen - 1 ] = 0;
+
+	printf("Enter user's security level number: ");
 	fflush(stdout);
 	scanf("%u", &info->level);
 
@@ -150,35 +150,38 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 * Returns 0 if not found, 1 if found, 2 on syntax error */
 static	int	users_config_scan_user(FILE *f, users_info_t *info) {
 
-	char *name, *pass_str;
+	char *name, *pass_str, *module;
 	unsigned int level;
-	int rc;
+	int rc, ret;
 
 	name = NULL;
 	pass_str = NULL;
+	module = NULL;
+	ret = 0;
 
 	while (!feof(f)) {
-		rc = fscanf(f, "%ms%u%ms", &name, &level, &pass_str);
+		rc = fscanf(f, "%ms%ms%u%ms", &name, &module, &level, &pass_str);
 		if (rc == EOF)
 			break;
-		if (rc < 3) {
-			free(name);
-			free(pass_str);
-			return 2;
+		if (rc < 4) {
+			ret = 2;
+			goto terminate;
 		}
 
 		if (!strcmp(name, info->user)) {
 			strncpy(info->pass, pass_str, USERS_MAX_PASS - 1);
+			strncpy(info->module, module, MAXFILE - 1);
 			info->level = level;
-			free(name);
-			free(pass_str);
-			return 1;
+			ret = 1;
+			goto terminate;
 		}
-		free(name);
-		free(pass_str);
 	}
 
-	return 0;
+terminate:
+	free(name);
+	free(pass_str);
+	free(module);
+	return ret;
 }
 
 /* Generates random salt from the set [a–zA–Z0–9./] with the specified len
@@ -228,7 +231,7 @@ void	users_config_new() {
 
 	if (!users_config_prompt(&info, 1))
 		return;
-	
+
 	f = fopen(serv_options.users_file, "a+");
 	if (f == NULL) {
 		fprintf(stderr, "Cannot open users file: %s\n", serv_options.users_file);
@@ -265,7 +268,7 @@ void	users_config_new() {
 	cr_pass = crypt(info.pass, salt);
 	free(salt);
 
-	fprintf(f, "%s %u %s\n", info.user, info.level, cr_pass);
+	fprintf(f, "%s %s %u %s\n", info.user, info.module, info.level, cr_pass);
 	fclose(f);
 
 	printf("User '%s' added to %s\n", info.user, serv_options.users_file);
@@ -277,7 +280,7 @@ void	users_config_rem() {
 
 /* auths user
 * Returns 0 on fail or the user level from the config  */
-unsigned int	users_auth(const char *user, const char *pass) {
+unsigned int	users_auth(const char *user, const char *pass, char *module) {
 
 	int rc, i, j, s;
 	FILE *f;
@@ -341,5 +344,6 @@ unsigned int	users_auth(const char *user, const char *pass) {
 		return 0;
 
 	/* Success! */
+	strncpy(module, info.module, MAXFILE - 1);
 	return info.level;
 }

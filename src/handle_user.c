@@ -32,6 +32,7 @@ static shell_callbacks_t	shell_cb;
 
 static char		*user_ip;
 static char		*user_uname;
+static char		module[MAXFILE];
 static unsigned	int	user_level;
 
 
@@ -80,28 +81,22 @@ void	handle_user_exit() {
 
 void	handle_user_load_shell() {
 
-	char *module_name;
-	int slen;
+	char path[MAXFILE];
 
+	if (serv_options.modules_dir[0])
+		snprintf(path, MAXFILE - 1, "%s/%s", serv_options.modules_dir, module);
+	else
+		snprintf(path, MAXFILE - 1, "%s/%s", default_file(DEFAULT_MODDIR), module);
 
-	slen = strlen(serv_options.modules_dir) + strlen(serv_options.shell) + 2;
-	module_name = memalloc(slen);
-	if (module_name == NULL)
-		handle_user_terminate();
-
-	snprintf(module_name, slen, "%s/%s", serv_options.modules_dir, serv_options.shell);
-	
-	user_hndl = dlopen(module_name, RTLD_LAZY);
+	user_hndl = dlopen(path, RTLD_LAZY);
 	if (user_hndl == NULL) {
-		serv_log_error("User %s (%s): Cannot load shell module %s", user_uname, user_ip, module_name);
-		free(module_name);
+		serv_log_error("User %s (%s): Cannot load shell module %s", user_uname, user_ip, path);
 		handle_user_terminate();
 	}
 
 	void (*shell_init)(shell_callbacks_t *a) = dlsym(user_hndl, "shell_init");
 	if (shell_init == NULL) {
-		serv_log_error("User %s (%s): Cannot load 'shell_init()' frome module %s", user_uname, user_ip, module_name);
-		free(module_name);
+		serv_log_error("User %s (%s): Cannot load 'shell_init()' frome module %s", user_uname, user_ip, path);
 		handle_user_terminate();
 	}	
 
@@ -113,8 +108,6 @@ void	handle_user_load_shell() {
 	shell_cb.shell_log = &__serv_log;
 	shell_cb.shell_exit = &handle_user_exit;
 	shell_init(&shell_cb);
-
-	free(module_name);
 }
 
 /* Server child to handle a newly connected user */
@@ -128,6 +121,7 @@ void	handle_user(ssh_session session) {
 	user_uname = NULL;
 	user_ip = NULL;
 	user_session = session;
+	memset(module, 0, sizeof(module));
 	ip = users_resolve_ip(session);
 
 	user_ip = memalloc(strlen(ip) + 1);
@@ -161,7 +155,7 @@ void	handle_user(ssh_session session) {
 			  case SSH_AUTH_METHOD_PASSWORD:
 				usr = ssh_message_auth_user(sshmsg);
 				pass = ssh_message_auth_password(sshmsg);
-				if ((user_level = users_auth(usr, pass))) {
+				if ((user_level = users_auth(usr, pass, module))) {
 					auth = 1;
 					user_uname = memalloc(strlen(usr) + 1);
 					if (user_uname == NULL)
@@ -171,7 +165,7 @@ void	handle_user(ssh_session session) {
 					ssh_message_auth_reply_success(sshmsg, 0);
 					serv_log("%s loged in with username '%s'", user_ip, user_uname);
 				} else {
-					serv_log_warning("%s login failed with username '%s'", user_ip, user_uname);
+					serv_log_warning("%s login failed with username '%s'", user_ip, usr);
 					ssh_message_reply_default(sshmsg);
 				}
 				retry++;

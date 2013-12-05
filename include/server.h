@@ -1,9 +1,18 @@
 #ifndef SSH_SERVER_H
 #define SSH_SERVER_H
 
-#define	MAXFILE		256
-//#define	MODULES		5
-#define PID_FILE	"/var/run/ssh-server.pid"
+#define	MAXFILE			256
+#define PID_FILE		"/var/run/ssh-server.pid"
+
+
+#define DEFAULT_DIR		"/etc/ssh-servd/"
+#define	default_file(file)	DEFAULT_DIR file
+#define	DEFAULT_CONFIG		"ssh-servd.conf"
+#define DEFAULT_RSAKEY		"ssh-servd-rsa"
+#define DEFAULT_DSAKEY		"ssh-servd-dsa"
+#define DEFAULT_USERS		"users"
+#define DEFAULT_MODDIR		"modules"
+
 
 /* Server configuration options */
 typedef struct {
@@ -14,8 +23,6 @@ typedef struct {
 	char	log_file[MAXFILE];
 	char	users_file[MAXFILE];
 	char	modules_dir[MAXFILE];
-	char	shell[MAXFILE];
-//	char	modules[MODULES][MAXFILE];
 } serv_options_t;
 
 extern	serv_options_t		serv_options;
