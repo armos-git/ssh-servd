@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <dlfcn.h>
 #include <libssh/libssh.h>
 #include <libssh/server.h>
@@ -116,12 +117,17 @@ void	handle_user(ssh_session session) {
 	ssh_message sshmsg;
 	int auth, shell, retry;
 	int rc;
+	char path[MAXFILE];
+	char *pubkey;
 	const char *usr, *pass, *ip;
+	ssh_key upub, spub;
+	FILE *fd;
 
 	user_uname = NULL;
 	user_ip = NULL;
 	user_session = session;
 	memset(module, 0, sizeof(module));
+	memset(path, 0, sizeof(path));
 	ip = users_resolve_ip(session);
 
 	user_ip = memalloc(strlen(ip) + 1);
@@ -171,9 +177,64 @@ void	handle_user(ssh_session session) {
 				retry++;
 				break;
 
+			  case SSH_AUTH_METHOD_PUBLICKEY:
+
+				upub = ssh_message_auth_pubkey(sshmsg);
+				if (upub == NULL)
+					goto terminate_pubkey;
+
+				fd = fopen(path, "r");
+				if (fd == NULL) {
+					serv_log_error("%s cannot open pubkey file %s", user_ip, path);
+					goto terminate_pubkey;
+				}
+
+				while (!feof(fd)) {
+					if (fscanf(fd, "%ms", &pubkey) != 1)
+						break;
+					if (ssh_pki_import_pubkey_base64(pubkey, ssh_key_type(upub), &spub) != SSH_OK) {
+						free(pubkey);
+						ssh_key_free(spub);
+						continue;
+					}
+
+					if (!ssh_key_cmp(spub, upub, SSH_KEY_CMP_PUBLIC)) {
+						auth = 1;
+						free(pubkey);
+						ssh_key_free(spub);
+						break;
+					}
+
+					free(pubkey);
+					ssh_key_free(spub);
+				}
+
+
+			  terminate_pubkey:
+				fclose(fd);
+				ssh_key_free(upub);
+				if (auth)
+					ssh_message_auth_reply_success(sshmsg, 0);
+				else
+					ssh_message_reply_default(sshmsg);
+				break;
+
 			  default:
-				ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PASSWORD);
-				ssh_message_reply_default(sshmsg);
+			/*
+				usr = ssh_message_auth_user(sshmsg);
+				if (serv_options.pubdir[0])
+					snprintf(path, MAXFILE - 1, "%s/%s.pub", serv_options.pubdir, usr);
+				else
+					snprintf(path, MAXFILE - 1, "%s/%s.pub", default_file(DEFAULT_PUBDIR), usr);
+
+				if (!access(path, F_OK))
+					ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PUBLICKEY);
+				else
+					ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PASSWORD);
+			*/
+				
+					ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PUBLICKEY);
+				//ssh_message_reply_default(sshmsg);
 				break;
 			}
 			break;

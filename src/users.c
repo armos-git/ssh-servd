@@ -135,7 +135,7 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 
 	printf("Enter user's shell module: ");
 	fflush(stdout);
-	fgets(info->module, 255, stdin);
+	fgets(info->module, MAXFILE - 1, stdin);
 	slen = strlen(info->module);
 	info->module[ slen - 1 ] = 0;
 

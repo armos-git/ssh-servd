@@ -19,11 +19,11 @@
 #define PHRASE_MAX		50
 
 #include "config_tool.h"
+#include "server.h"
 #include "mem.h"
 #include "log.h"
 #include "users.h"
 #include "handle_user.h"
-#include "server.h"
 
 /* Server configuration options */
 serv_options_t		serv_options;
@@ -196,6 +196,7 @@ static	int	load_config(const char *filename) {
 	config_bind_var(&conf, "log", "%s", serv_options.log_file);
 	config_bind_var(&conf, "users", "%s", serv_options.users_file);
 	config_bind_var(&conf, "modules_dir", "%s", serv_options.modules_dir);
+	config_bind_var(&conf, "pubkeys_dir", "%s", serv_options.pubdir);
 
 	if (config_parse(&conf) != CONFIG_OK) {
 		fprintf(stderr, "Config error: %s\n", config_get_error(&conf));

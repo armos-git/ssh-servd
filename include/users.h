@@ -10,7 +10,7 @@ typedef	struct {
 	char user[USERS_MAX_NAME];
 	char pass[USERS_MAX_PASS];
 	char salt[USERS_MAX_SALT];
-	char module[256];
+	char module[MAXFILE];
 	unsigned int level;
 
 } users_info_t;

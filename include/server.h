@@ -12,6 +12,7 @@
 #define DEFAULT_DSAKEY		"ssh-servd-dsa"
 #define DEFAULT_USERS		"users"
 #define DEFAULT_MODDIR		"modules"
+#define DEFAULT_PUBDIR		"pubkeys"
 
 
 /* Server configuration options */
@@ -23,6 +24,7 @@ typedef struct {
 	char	log_file[MAXFILE];
 	char	users_file[MAXFILE];
 	char	modules_dir[MAXFILE];
+	char	pubdir[MAXFILE];
 } serv_options_t;
 
 extern	serv_options_t		serv_options;
