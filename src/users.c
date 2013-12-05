@@ -54,13 +54,13 @@ char	*users_resolve_ip(ssh_session ses) {
 * Returns -1 on error */
 int	read_tty(void *data, size_t len, int noecho) {
 
-	int fd, rc;
+	int rc, fd;
 	struct termios oldt, newt;
 
 	fd = open("/dev/tty", O_RDWR);
 	if (fd < 0) {
 		fprintf(stderr, "Error opening /dev/tty!\n");
-		return 0;
+		return -1;
 	}
 
 	if (noecho) {

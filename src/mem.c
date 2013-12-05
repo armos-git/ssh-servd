@@ -20,5 +20,7 @@ void	*memalloc(size_t size) {
 	if (ptr == NULL)
 		serv_log_fatal("Failed to allocate memory! Requested size is %u bytes. malloc(): %s", size, strerror(errno));
 
+	memset(ptr, 0, size);
+
 	return ptr;
 }

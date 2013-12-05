@@ -16,8 +16,10 @@
 #include <libssh/server.h>
 
 #define	LOG_MODULE_NAME		"SSH Server"
+#define PHRASE_MAX		50
 
 #include "config_tool.h"
+#include "mem.h"
 #include "log.h"
 #include "users.h"
 #include "handle_user.h"
@@ -263,6 +265,12 @@ static	void	generate_keys(const char *type) {
 		goto terminate;
 	}
 
+	phrase = memalloc(PHRASE_MAX);
+	if (phrase == NULL) {
+		fprintf(stderr, "Error allocating memory!\n");
+		goto terminate;
+	}
+
 	if (!strcmp(type, "rsa")) {
 		key_type = SSH_KEYTYPE_RSA;
 		valid_bitlen = valid_rsa_bitlen;
@@ -283,6 +291,8 @@ static	void	generate_keys(const char *type) {
 	printf("Enter passphrase: ");
 	fflush(stdout);
 	rc = read_tty(phrase, USERS_MAX_PASS - 1, 1);
+	if (rc < 0)
+		goto terminate;
 	phrase[rc - 1] = 0;
 
 	printf("Ouput file: ");
@@ -300,6 +310,7 @@ static	void	generate_keys(const char *type) {
 		goto terminate;
 	}
 
+	memset(phrase, 0, PHRASE_MAX);
 	ssh_key_free(key);
 	if (phrase != NULL)
 		memset(phrase, 0, USERS_MAX_PASS);
