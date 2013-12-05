@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <errno.h>
 #include <dlfcn.h>
 #include <libssh/libssh.h>
 #include <libssh/server.h>
@@ -111,23 +112,123 @@ void	handle_user_load_shell() {
 	shell_init(&shell_cb);
 }
 
+static	int	login_password(const char *usr, const char *pass, ssh_message sshmsg) {
+
+	int auth = 0;
+
+	if ((user_level = users_auth(usr, pass, module))) {
+		auth = 1;
+		user_uname = memalloc(strlen(usr) + 1);
+		if (user_uname == NULL)
+			handle_user_terminate();
+		strcpy(user_uname, usr);
+
+		ssh_message_auth_reply_success(sshmsg, 0);
+		serv_log("%s loged in with username '%s'", user_ip, user_uname);
+	} else {
+		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
+		ssh_message_reply_default(sshmsg);
+	}
+
+	return auth;
+}
+
+static	int	login_pubkey(const char *usr, const char *keypath, ssh_message sshmsg) {
+
+	char *pubkey;
+	int rc;
+	ssh_key upub, spub;
+	users_info_t info;
+	FILE *fd;
+
+	int auth = 0;
+
+	fd = fopen(serv_options.users_file, "r");
+	if (fd == NULL) {
+		serv_log_error("Cannot open users file: fopen(): %s", strerror(errno));
+		return 0;
+	}
+	
+	memset(&info, 0, sizeof(info));
+	strncpy(info.user, usr, USERS_MAX_NAME - 1);
+
+	rc = users_config_scan_user(fd, &info);
+	switch (rc) {
+	  case 1:
+		user_uname = memalloc(strlen(usr) + 1);
+		if (user_uname == NULL)
+			handle_user_terminate();
+		strcpy(user_uname, usr);
+		strcpy(module, info.module);
+		user_level = info.level;
+
+		break;
+	  case 2:
+		serv_log_warning("Syntax error in users file %s while searching for user %s", serv_options.users_file, usr);
+	  default:
+		fclose(fd);
+		return 0;
+	}
+	fclose(fd);
+
+	upub = ssh_message_auth_pubkey(sshmsg);
+	if (upub == NULL)
+		goto terminate;
+
+	fd = fopen(keypath, "r");
+	if (fd == NULL) {
+		serv_log_error("%s cannot open pubkey file %s", user_ip, keypath);
+		goto terminate;
+	}
+
+	while (!feof(fd)) {
+		if (fscanf(fd, "%ms", &pubkey) != 1)
+			break;
+
+		if (ssh_pki_import_pubkey_base64(pubkey, ssh_key_type(upub), &spub) != SSH_OK) {
+			free(pubkey);
+			continue;
+		}
+
+		if (!ssh_key_cmp(spub, upub, SSH_KEY_CMP_PUBLIC)) {
+			auth = 1;
+			free(pubkey);
+			ssh_key_free(spub);
+			break;
+		}
+
+		free(pubkey);
+		ssh_key_free(spub);
+	}
+
+
+terminate:
+	fclose(fd);
+	if (auth) {
+		serv_log("%s loged in with username '%s'", user_ip, user_uname);
+		ssh_message_auth_reply_success(sshmsg, 0);
+	} else {
+		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
+		ssh_message_reply_default(sshmsg);
+	}
+
+	return auth;
+}
+
 /* Server child to handle a newly connected user */
 void	handle_user(ssh_session session) {
 
 	ssh_message sshmsg;
 	int auth, shell, retry;
 	int rc;
-	char path[MAXFILE];
-	char *pubkey;
+	char keypath[MAXFILE];
 	const char *usr, *pass, *ip;
-	ssh_key upub, spub;
-	FILE *fd;
 
 	user_uname = NULL;
 	user_ip = NULL;
 	user_session = session;
+	memset(keypath, 0, sizeof(keypath));
 	memset(module, 0, sizeof(module));
-	memset(path, 0, sizeof(path));
 	ip = users_resolve_ip(session);
 
 	user_ip = memalloc(strlen(ip) + 1);
@@ -161,80 +262,28 @@ void	handle_user(ssh_session session) {
 			  case SSH_AUTH_METHOD_PASSWORD:
 				usr = ssh_message_auth_user(sshmsg);
 				pass = ssh_message_auth_password(sshmsg);
-				if ((user_level = users_auth(usr, pass, module))) {
-					auth = 1;
-					user_uname = memalloc(strlen(usr) + 1);
-					if (user_uname == NULL)
-						handle_user_terminate();
-					strcpy(user_uname, usr);
-
-					ssh_message_auth_reply_success(sshmsg, 0);
-					serv_log("%s loged in with username '%s'", user_ip, user_uname);
-				} else {
-					serv_log_warning("%s login failed with username '%s'", user_ip, usr);
-					ssh_message_reply_default(sshmsg);
-				}
+				auth = login_password(usr, pass, sshmsg);
 				retry++;
 				break;
 
 			  case SSH_AUTH_METHOD_PUBLICKEY:
-
-				upub = ssh_message_auth_pubkey(sshmsg);
-				if (upub == NULL)
-					goto terminate_pubkey;
-
-				fd = fopen(path, "r");
-				if (fd == NULL) {
-					serv_log_error("%s cannot open pubkey file %s", user_ip, path);
-					goto terminate_pubkey;
-				}
-
-				while (!feof(fd)) {
-					if (fscanf(fd, "%ms", &pubkey) != 1)
-						break;
-					if (ssh_pki_import_pubkey_base64(pubkey, ssh_key_type(upub), &spub) != SSH_OK) {
-						free(pubkey);
-						ssh_key_free(spub);
-						continue;
-					}
-
-					if (!ssh_key_cmp(spub, upub, SSH_KEY_CMP_PUBLIC)) {
-						auth = 1;
-						free(pubkey);
-						ssh_key_free(spub);
-						break;
-					}
-
-					free(pubkey);
-					ssh_key_free(spub);
-				}
-
-
-			  terminate_pubkey:
-				fclose(fd);
-				ssh_key_free(upub);
-				if (auth)
-					ssh_message_auth_reply_success(sshmsg, 0);
-				else
-					ssh_message_reply_default(sshmsg);
+				usr = ssh_message_auth_user(sshmsg);
+				auth = login_pubkey(usr, keypath, sshmsg);
 				break;
 
 			  default:
-			/*
 				usr = ssh_message_auth_user(sshmsg);
 				if (serv_options.pubdir[0])
-					snprintf(path, MAXFILE - 1, "%s/%s.pub", serv_options.pubdir, usr);
+					snprintf(keypath, MAXFILE - 1, "%s/%s.pub", serv_options.pubdir, usr);
 				else
-					snprintf(path, MAXFILE - 1, "%s/%s.pub", default_file(DEFAULT_PUBDIR), usr);
+					snprintf(keypath, MAXFILE - 1, "%s/%s.pub", default_file(DEFAULT_PUBDIR), usr);
 
-				if (!access(path, F_OK))
+				if (!access(keypath, F_OK))
 					ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PUBLICKEY);
 				else
 					ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PASSWORD);
-			*/
 				
-					ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PUBLICKEY);
-				//ssh_message_reply_default(sshmsg);
+				ssh_message_reply_default(sshmsg);
 				break;
 			}
 			break;

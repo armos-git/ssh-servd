@@ -148,7 +148,7 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 
 /* Searches for username info.user in the users config file and files out struct info if found.
 * Returns 0 if not found, 1 if found, 2 on syntax error */
-static	int	users_config_scan_user(FILE *f, users_info_t *info) {
+int	users_config_scan_user(FILE *f, users_info_t *info) {
 
 	char *name, *pass_str, *module;
 	unsigned int level;
