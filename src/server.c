@@ -265,12 +265,6 @@ static	void	generate_keys(const char *type) {
 		goto terminate;
 	}
 
-	phrase = memalloc(PHRASE_MAX);
-	if (phrase == NULL) {
-		fprintf(stderr, "Error allocating memory!\n");
-		goto terminate;
-	}
-
 	if (!strcmp(type, "rsa")) {
 		key_type = SSH_KEYTYPE_RSA;
 		valid_bitlen = valid_rsa_bitlen;
