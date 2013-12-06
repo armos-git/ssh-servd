@@ -234,7 +234,7 @@ void	users_config_new() {
 
 	f = fopen(serv_options.users_file, "a+");
 	if (f == NULL) {
-		fprintf(stderr, "Cannot open users file: %s\n", serv_options.users_file);
+		fprintf(stderr, "Cannot open users file %s: fopen(): %s\n", serv_options.users_file, strerror(errno));
 		return;
 	}
 
@@ -290,7 +290,7 @@ unsigned int	users_auth(const char *user, const char *pass, char *module) {
 
 	f = fopen(serv_options.users_file, "r");
 	if (f == NULL) {
-		serv_log_error("Cannot open users file: fopen(): %s", strerror(errno));
+		serv_log_error("Cannot open users file %s: fopen(): %s\n", serv_options.users_file, strerror(errno));
 		return 0;
 	}
 	

@@ -126,8 +126,8 @@ static	int	login_password(const char *usr, const char *pass, ssh_message sshmsg)
 		ssh_message_auth_reply_success(sshmsg, 0);
 		serv_log("%s loged in with username '%s'", user_ip, user_uname);
 	} else {
-		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
 		ssh_message_reply_default(sshmsg);
+		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
 	}
 
 	return auth;
@@ -145,7 +145,7 @@ static	int	login_pubkey(const char *usr, const char *keypath, ssh_message sshmsg
 
 	fd = fopen(serv_options.users_file, "r");
 	if (fd == NULL) {
-		serv_log_error("Cannot open users file: fopen(): %s", strerror(errno));
+		serv_log_error("Cannot open users file %s: fopen(): %s", serv_options.users_file, strerror(errno));
 		return 0;
 	}
 	
@@ -159,7 +159,7 @@ static	int	login_pubkey(const char *usr, const char *keypath, ssh_message sshmsg
 		if (user_uname == NULL)
 			handle_user_terminate();
 		strcpy(user_uname, usr);
-		strcpy(module, info.module);
+		strncpy(module, info.module, MAXFILE - 1);
 		user_level = info.level;
 
 		break;
@@ -175,6 +175,7 @@ static	int	login_pubkey(const char *usr, const char *keypath, ssh_message sshmsg
 	if (upub == NULL)
 		goto terminate;
 
+
 	fd = fopen(keypath, "r");
 	if (fd == NULL) {
 		serv_log_error("%s cannot open pubkey file %s", user_ip, keypath);
@@ -182,7 +183,8 @@ static	int	login_pubkey(const char *usr, const char *keypath, ssh_message sshmsg
 	}
 
 	while (!feof(fd)) {
-		if (fscanf(fd, "%ms", &pubkey) != 1)
+		rc = fscanf(fd, "%ms", &pubkey);
+		if (rc != 1)
 			break;
 
 		if (ssh_pki_import_pubkey_base64(pubkey, ssh_key_type(upub), &spub) != SSH_OK) {
@@ -204,14 +206,15 @@ static	int	login_pubkey(const char *usr, const char *keypath, ssh_message sshmsg
 
 terminate:
 	fclose(fd);
-	if (auth) {
-		serv_log("%s loged in with username '%s'", user_ip, user_uname);
-		ssh_message_auth_reply_success(sshmsg, 0);
-	} else {
-		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
-		ssh_message_reply_default(sshmsg);
-	}
 
+	if (auth) {
+		ssh_message_auth_reply_success(sshmsg, 0);
+		serv_log("%s loged in with username '%s'", user_ip, usr);
+	} else {
+		ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PASSWORD);
+		ssh_message_reply_default(sshmsg);
+		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
+	}
 	return auth;
 }
 
