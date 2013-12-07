@@ -225,6 +225,12 @@ static	int	pty_request(ssh_session session, ssh_channel channel, const char *ter
 	return 0;
 }
 
+static	int	pty_change_window_size(ssh_session session, ssh_channel channel,
+				int x,int y, int px, int py, void *userdata) {
+
+	fprintf(stderr, "terminal x: %i. y: %i\n", x, y);
+	return 0;
+}
 
 
 static	int	login_password(ssh_session session, const char *usr, const char *pass, void *userdata) {
@@ -252,6 +258,7 @@ static	int	login_password(ssh_session session, const char *usr, const char *pass
 static struct 	ssh_channel_callbacks_struct channel_cb = {
 
 	.channel_pty_request_function = pty_request,
+	.channel_pty_window_change_function =  pty_change_window_size,
 	.channel_shell_request_function = shell_request
 };
 
