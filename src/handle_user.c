@@ -32,6 +32,7 @@ static char			*user_buf;
 static void			*user_hndl;
 static shell_callbacks_t	shell_cb;
 
+static int		auth;
 static char		*user_ip;
 static char		*user_uname;
 static char		module[MAXFILE];
@@ -40,7 +41,7 @@ static unsigned	int	user_level;
 
 void	handle_user_unload_shell() {
 
-	dlclose(user_hndl);
+	//dlclose(user_hndl);
 }
 
 /* Clean server child termination */
@@ -114,23 +115,7 @@ void	handle_user_load_shell() {
 
 static	int	login_password(const char *usr, const char *pass, ssh_message sshmsg) {
 
-	int auth = 0;
-
-	if ((user_level = users_auth(usr, pass, module))) {
-		auth = 1;
-		user_uname = memalloc(strlen(usr) + 1);
-		if (user_uname == NULL)
-			handle_user_terminate();
-		strcpy(user_uname, usr);
-
-		ssh_message_auth_reply_success(sshmsg, 0);
-		serv_log("%s loged in with username '%s'", user_ip, user_uname);
-	} else {
-		ssh_message_reply_default(sshmsg);
-		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
-	}
-
-	return auth;
+	return 0;
 }
 
 static	int	login_pubkey(const char *usr, const char *keypath, ssh_message sshmsg) {
@@ -218,15 +203,86 @@ terminate:
 	return auth;
 }
 
+
+
+static	int	shell_request(ssh_session session, ssh_channel channel, void *userdata) {
+
+	/* load shell module */
+	fprintf(stderr, "shell\n");
+	handle_user_load_shell();
+	return 0;
+}
+
+static	int	pty_request(ssh_session session, ssh_channel channel, const char *term, 
+				int x,int y, int px, int py, void *userdata) {
+
+	fprintf(stderr, "terminal x: %i. y: %i\n", x, y);
+	return 0;
+}
+
+
+
+static	int	auth_password(ssh_session session, const char *usr, const char *pass, void *userdata) {
+
+	int ret;
+
+	if ((user_level = users_auth(usr, pass, module))) {
+		auth = 1;
+		user_uname = memalloc(strlen(usr) + 1);
+		if (user_uname == NULL)
+			handle_user_terminate();
+		strcpy(user_uname, usr);
+
+		ret = SSH_AUTH_SUCCESS;
+		serv_log("%s loged in with username '%s'", user_ip, user_uname);
+	} else {
+		ret = SSH_AUTH_DENIED;
+		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
+	}
+
+	return ret;
+}
+
+
+static struct 	ssh_channel_callbacks_struct channel_cb = {
+
+	.channel_pty_request_function = pty_request,
+	.channel_shell_request_function = shell_request
+};
+
+static	ssh_channel new_channel(ssh_session session, void *userdata) {
+
+	if (user_chan != NULL)
+		return NULL;
+
+	user_chan = ssh_channel_new(session);
+	if (user_chan == NULL) {
+		/* error */
+		serv_log_error("%s failed to create channel: ssh_channel_new(): %s", user_ip, ssh_get_error(session));
+	}
+
+	ssh_callbacks_init(&channel_cb);
+	ssh_set_channel_callbacks(user_chan, &channel_cb);
+	return user_chan;
+}	
+
 /* Server child to handle a newly connected user */
 void	handle_user(ssh_session session) {
 
 	ssh_message sshmsg;
-	int auth, shell, retry;
+	ssh_event eventloop;
+	int shell, retry;
 	int rc;
 	char keypath[MAXFILE];
 	const char *usr, *pass, *ip;
+	struct ssh_server_callbacks_struct serv_cb =  {
+		.userdata = NULL,
+		.auth_password_function = auth_password,
+		.channel_open_request_session_function = new_channel
+	};
 
+	auth = 0;
+	user_chan = NULL;
 	user_uname = NULL;
 	user_ip = NULL;
 	user_session = session;
@@ -240,41 +296,36 @@ void	handle_user(ssh_session session) {
 
 	strcpy(user_ip, ip);
 	
+
+	ssh_callbacks_init(&serv_cb);
+	ssh_set_server_callbacks(session, &serv_cb);
+
 	if (ssh_handle_key_exchange(session) != SSH_OK) {
 		serv_log_error("%s: Error while exchanging keys. ssh_handle_key_exchange(): %s", user_ip, ssh_get_error(session));
 		handle_user_terminate();
 	}
 
-	/* authenticate client */
-	auth = 0;
-	retry = 0;
-	do {
-		if (retry == 3)
-			break;
+	ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD | SSH_AUTH_METHOD_PUBLICKEY);
+	eventloop = ssh_event_new();
+	if (eventloop == NULL) {
+		/* error */
+	}
 
-		sshmsg = ssh_message_get(session);
-		if (sshmsg == NULL) {
-			serv_log_error("%s: handle_user() authenticate loop ssh_message_get() failed: ", user_ip, ssh_get_error(session));
-			break;
+	ssh_event_add_session(eventloop, session);
+
+	/* wait for auth and channel */
+	while (!(auth && user_chan != NULL)) {
+		if (ssh_event_dopoll(eventloop, -1) == SSH_ERROR) {
+			/* error */
 		}
+	}
+	if (!auth) {
+		serv_log_warning("%s login failed. Disconnecting...", user_ip);
+		handle_user_terminate();
+	}
 
-		switch (ssh_message_type(sshmsg)) {
-		  case SSH_REQUEST_AUTH:
-			switch (ssh_message_subtype(sshmsg)) {
 
-			  case SSH_AUTH_METHOD_PASSWORD:
-				usr = ssh_message_auth_user(sshmsg);
-				pass = ssh_message_auth_password(sshmsg);
-				auth = login_password(usr, pass, sshmsg);
-				retry++;
-				break;
-
-			  case SSH_AUTH_METHOD_PUBLICKEY:
-				usr = ssh_message_auth_user(sshmsg);
-				auth = login_pubkey(usr, keypath, sshmsg);
-				break;
-
-			  default:
+	/*
 				usr = ssh_message_auth_user(sshmsg);
 				if (serv_options.pubdir[0])
 					snprintf(keypath, MAXFILE - 1, "%s/%s.pub", serv_options.pubdir, usr);
@@ -288,74 +339,13 @@ void	handle_user(ssh_session session) {
 				
 				ssh_message_reply_default(sshmsg);
 				break;
-			}
-			break;
-		  default:
-			ssh_message_reply_default(sshmsg);
-			break;
-		}
-		ssh_message_free(sshmsg);
-	} while (!auth);
+	*/
 
-	if (!auth) {
-		serv_log_warning("%s login failed. Disconnecting...", user_ip);
-		handle_user_terminate();
-	}
+	/*
+	*/
 
 
 	/* wait for channel request from client */
-	user_chan = 0;
-	do {
-		sshmsg = ssh_message_get(session);
-		if (sshmsg == NULL)
-			continue;
-
-		switch (ssh_message_type(sshmsg)) {
-
-		  case SSH_REQUEST_CHANNEL_OPEN:
-			if (ssh_message_subtype(sshmsg) == SSH_CHANNEL_SESSION)
-				user_chan = ssh_message_channel_request_open_reply_accept(sshmsg);
-			break;
-		  default:
-			ssh_message_reply_default(sshmsg);
-			break;
-		}
-
-		ssh_message_free(sshmsg);
-
-	} while ((sshmsg != NULL) && !user_chan);
-	if (!user_chan) {
-		serv_log_error("Error waiting for channel request from %s: %s", user_ip, ssh_get_error(session));
-		handle_user_terminate();
-	}
-
-	/* wait for shell request from client */
-	shell = 0;
-	do {
-		sshmsg = ssh_message_get(session);
-		if (sshmsg == NULL)
-			continue;
-
-		if (ssh_message_type(sshmsg) == SSH_REQUEST_CHANNEL &&
-			(ssh_message_subtype(sshmsg) == SSH_CHANNEL_REQUEST_SHELL ||
-			 ssh_message_subtype(sshmsg) == SSH_CHANNEL_REQUEST_PTY))
-		{
-			shell = 1;
-			ssh_message_channel_request_reply_success(sshmsg);
-		} else {
-			ssh_message_reply_default(sshmsg);
-		}
-
-		ssh_message_free(sshmsg);
-	
-	} while ((sshmsg != NULL) && !shell);
-	if (!shell) {
-		serv_log_error("Error waiting for shell request from %s: %s", user_ip, ssh_get_error(session));
-		handle_user_terminate();
-	}
-	
-	/* load shell module */
-	handle_user_load_shell();
 
 	/* setup a read buffer */
 	user_buf = memalloc(USER_READ_BUF);
