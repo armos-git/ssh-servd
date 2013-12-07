@@ -16,7 +16,6 @@
 #include <libssh/callbacks.h>
 
 #define	LOG_MODULE_NAME		"SSH Server"
-#define USER_READ_BUF		2048
 
 #include "server.h"
 #include "log.h"
@@ -33,15 +32,15 @@ static void			*user_hndl;
 static shell_callbacks_t	shell_cb;
 
 static int		auth;
-static char		*user_ip;
 static char		*user_uname;
+static char		user_ip[INET_ADDRSTRLEN+1];
 static char		module[MAXFILE];
 static unsigned	int	user_level;
 
 
 void	handle_user_unload_shell() {
 
-	//dlclose(user_hndl);
+	dlclose(user_hndl);
 }
 
 /* Clean server child termination */
@@ -49,8 +48,6 @@ void	handle_user_terminate() {
 
 	if (user_uname != NULL)
 		free(user_uname);
-	if (user_ip != NULL)
-		free(user_ip);
 
 	users_close(user_session);
 	_exit(EXIT_FAILURE);
@@ -113,25 +110,38 @@ void	handle_user_load_shell() {
 	shell_init(&shell_cb);
 }
 
-static	int	login_password(const char *usr, const char *pass, ssh_message sshmsg) {
 
-	return 0;
-}
-
-static	int	login_pubkey(const char *usr, const char *keypath, ssh_message sshmsg) {
-
+static	int	login_pubkey(ssh_session session, const char *usr, struct ssh_key_struct *upub,
+				char signature_state, void *user_data) {
+	char keypath[MAXFILE];
 	char *pubkey;
-	int rc;
-	ssh_key upub, spub;
+	int rc, ret;
+	ssh_key spub;
 	users_info_t info;
 	FILE *fd;
 
-	int auth = 0;
+	switch (signature_state) {
+	  case SSH_PUBLICKEY_STATE_NONE:
+		break;
+	  case SSH_PUBLICKEY_STATE_VALID:
+		serv_log("%s logged in with username '%s' (pubkey)", user_ip, usr);
+		return SSH_AUTH_SUCCESS;
+	  default:
+		serv_log_warning("%s login failed with username '%s' (pubkey)", user_ip, usr);
+		return SSH_AUTH_DENIED;
+	}
+
+	memset(keypath, 0, sizeof(keypath));
+
+	if (serv_options.pubdir[0])
+		snprintf(keypath, MAXFILE - 1, "%s/%s.pub", serv_options.pubdir, usr);
+	else
+		snprintf(keypath, MAXFILE - 1, "%s/%s.pub", default_file(DEFAULT_PUBDIR), usr);
 
 	fd = fopen(serv_options.users_file, "r");
 	if (fd == NULL) {
 		serv_log_error("Cannot open users file %s: fopen(): %s", serv_options.users_file, strerror(errno));
-		return 0;
+		return SSH_AUTH_DENIED;
 	}
 	
 	memset(&info, 0, sizeof(info));
@@ -152,14 +162,9 @@ static	int	login_pubkey(const char *usr, const char *keypath, ssh_message sshmsg
 		serv_log_warning("Syntax error in users file %s while searching for user %s", serv_options.users_file, usr);
 	  default:
 		fclose(fd);
-		return 0;
+		return SSH_AUTH_DENIED;
 	}
 	fclose(fd);
-
-	upub = ssh_message_auth_pubkey(sshmsg);
-	if (upub == NULL)
-		goto terminate;
-
 
 	fd = fopen(keypath, "r");
 	if (fd == NULL) {
@@ -193,14 +198,14 @@ terminate:
 	fclose(fd);
 
 	if (auth) {
-		ssh_message_auth_reply_success(sshmsg, 0);
-		serv_log("%s loged in with username '%s'", user_ip, usr);
+		ret = SSH_AUTH_SUCCESS;
 	} else {
-		ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PASSWORD);
-		ssh_message_reply_default(sshmsg);
-		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
+		ret = SSH_AUTH_DENIED;
+		serv_log_warning("%s no valid pubkey found for username '%s'", user_ip, usr);
 	}
-	return auth;
+
+	return ret;
+
 }
 
 
@@ -222,7 +227,7 @@ static	int	pty_request(ssh_session session, ssh_channel channel, const char *ter
 
 
 
-static	int	auth_password(ssh_session session, const char *usr, const char *pass, void *userdata) {
+static	int	login_password(ssh_session session, const char *usr, const char *pass, void *userdata) {
 
 	int ret;
 
@@ -234,7 +239,7 @@ static	int	auth_password(ssh_session session, const char *usr, const char *pass,
 		strcpy(user_uname, usr);
 
 		ret = SSH_AUTH_SUCCESS;
-		serv_log("%s loged in with username '%s'", user_ip, user_uname);
+		serv_log("%s logged in with username '%s'", user_ip, user_uname);
 	} else {
 		ret = SSH_AUTH_DENIED;
 		serv_log_warning("%s login failed with username '%s'", user_ip, usr);
@@ -257,8 +262,8 @@ static	ssh_channel new_channel(ssh_session session, void *userdata) {
 
 	user_chan = ssh_channel_new(session);
 	if (user_chan == NULL) {
-		/* error */
 		serv_log_error("%s failed to create channel: ssh_channel_new(): %s", user_ip, ssh_get_error(session));
+		handle_user_terminate();
 	}
 
 	ssh_callbacks_init(&channel_cb);
@@ -269,34 +274,28 @@ static	ssh_channel new_channel(ssh_session session, void *userdata) {
 /* Server child to handle a newly connected user */
 void	handle_user(ssh_session session) {
 
-	ssh_message sshmsg;
 	ssh_event eventloop;
-	int shell, retry;
 	int rc;
 	char keypath[MAXFILE];
-	const char *usr, *pass, *ip;
+	const char *ip;
+
 	struct ssh_server_callbacks_struct serv_cb =  {
 		.userdata = NULL,
-		.auth_password_function = auth_password,
+		.auth_password_function = login_password,
+		.auth_pubkey_function = login_pubkey,
 		.channel_open_request_session_function = new_channel
 	};
 
 	auth = 0;
 	user_chan = NULL;
 	user_uname = NULL;
-	user_ip = NULL;
 	user_session = session;
 	memset(keypath, 0, sizeof(keypath));
 	memset(module, 0, sizeof(module));
+
 	ip = users_resolve_ip(session);
-
-	user_ip = memalloc(strlen(ip) + 1);
-	if (user_ip == NULL)
-		handle_user_terminate();
-
-	strcpy(user_ip, ip);
+	strncpy(user_ip, ip, INET_ADDRSTRLEN);
 	
-
 	ssh_callbacks_init(&serv_cb);
 	ssh_set_server_callbacks(session, &serv_cb);
 
@@ -308,17 +307,27 @@ void	handle_user(ssh_session session) {
 	ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD | SSH_AUTH_METHOD_PUBLICKEY);
 	eventloop = ssh_event_new();
 	if (eventloop == NULL) {
-		/* error */
+		serv_log_error("%s failed to create an event context.", user_ip);
+		handle_user_terminate();
 	}
 
 	ssh_event_add_session(eventloop, session);
 
 	/* wait for auth and channel */
 	while (!(auth && user_chan != NULL)) {
-		if (ssh_event_dopoll(eventloop, -1) == SSH_ERROR) {
-			/* error */
+		rc = ssh_event_dopoll(eventloop, USER_POLL_TIMEOUT);
+		switch (rc) {
+		  case SSH_ERROR:
+			serv_log_error("%s ssh_event_dopoll(): %s", user_ip, ssh_get_error(session));
+			goto break_auth;
+		  case SSH_AGAIN:
+			/* timeout */
+			if (!ssh_is_connected(session))
+				goto break_auth;
+			break;
 		}
 	}
+break_auth:
 	if (!auth) {
 		serv_log_warning("%s login failed. Disconnecting...", user_ip);
 		handle_user_terminate();
@@ -344,8 +353,6 @@ void	handle_user(ssh_session session) {
 	/*
 	*/
 
-
-	/* wait for channel request from client */
 
 	/* setup a read buffer */
 	user_buf = memalloc(USER_READ_BUF);
