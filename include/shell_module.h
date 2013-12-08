@@ -1,47 +1,40 @@
 #ifndef SHELL_MODULE_H
 #define SHELL_MODULE_H
 
+#include <stdint.h>
+
+struct	shell_info_struct {
+
+	int x;
+	int y;
+	int px;
+	int py;
+};
+
+/* shell callbacks struct */
 typedef struct {
 
-	const char *ip_addr;
-	const char *uname;
-	unsigned int level;
-	void (*shell_write)(void *data, unsigned int len);
-	void (*shell_read)(void *data, unsigned int len);
-	int  (*shell_log)(int type, const char *module, const char *msg, ...);
-	void (*shell_exit)(void);
+	const char			*ip_addr;
+	const char			*uname;
+	unsigned int			level;
+	struct shell_info_struct	shell_info;
+	void				(*shell_write)(void *data, uint32_t len);
+	void				(*shell_printf)(unsigned int buflen, const char *format, ...);
+	void				(*shell_read)(void *data, uint32_t len);
+	void				(*shell_change_window_size)(int x, int y, int px, int py);
+	int				(*shell_log)(int type, const char *module, const char *msg, ...);
+	void				(*shell_exit)(void);
 
 } shell_callbacks_t;
 
+
+/* check to see if it is included in server or in shell module */
 #ifndef HANDLE_USER_H
 
-/* Required functions */
-void	shell_init(shell_callbacks_t *cb);
-void	shell_read(void *data, unsigned int len);
+#include <string.h>
 
-/* External functions */
-static	void		(*shell_write)(void *data, unsigned int len);
-static	int  		(*__shell_log)(int type, const char *module, const char *msg, ...);
-static	void		(*shell_exit)(void);
-
-
-/* Gloabal variables */
-const	static	char 	*ip_addr;
-const	static	char 	*username;
-static	unsigned int 	level;
-static	unsigned int	shell_printf_buf_len;
-
-
-/* Sets up all external and global objects according to data in cb  */
-#define SHELL_INIT_GLOBALS(cb) \
-	cb->shell_read = &shell_read; \
-	shell_write = cb->shell_write; \
-	__shell_log = cb->shell_log; \
-	shell_exit = cb->shell_exit; \
-	ip_addr = cb->ip_addr; \
-	username = cb->uname; \
-	level = cb->level; \
-	shell_printf_buf_len = 4096;
+/* shell_printf() buffer size */
+#define DEFAULT_SHELL_PRINTF_BUF_SIZE		4096
 
 
 enum LOG_TYPES {
@@ -51,23 +44,52 @@ enum LOG_TYPES {
 	LOG_FATAL
 };
 
-#define		shell_log(module, msg...)		__shell_log(LOG_MSG, module, msg)
-#define		shell_log_warning(module, msg...)	__shell_log(LOG_WARNING, module, msg)
-#define		shell_log_error(module, msg...)		__shell_log(LOG_ERROR, module, msg)
-#define		shell_log_fatal(module, msg...)		__shell_log(LOG_FATAL, module, msg)
+
+/* Gloabal variables */
+const	static	char 			*user_ipaddr;
+const	static	char		 	*username;
+static	unsigned int 			userlevel;
+static	unsigned int			shell_printf_buf_len;
+static	struct	shell_info_struct	shell_info;
 
 
-static	void	shell_printf(const char *format, ...) {
+/* Sets up all external and global objects according to data in cb  */
+#define SHELL_INIT_GLOBALS(cb) \
+	memcpy(&shell_info, &cb->shell_info, sizeof(struct shell_info_struct)); \
+	cb->shell_read = &shell_read; \
+	cb->shell_change_window_size = &shell_change_window_size; \
+	shell_write = cb->shell_write; \
+	__shell_printf = cb->shell_printf; \
+	__shell_log = cb->shell_log; \
+	shell_exit = cb->shell_exit; \
+	user_ipaddr = cb->ip_addr; \
+	username = cb->uname; \
+	userlevel = cb->level; \
+	shell_printf_buf_len = DEFAULT_SHELL_PRINTF_BUF_SIZE;
 
-	va_list ap;
-	char *buf = alloca(shell_printf_buf_len);
 
-	va_start(ap, format);
-	vsnprintf(buf, shell_printf_buf_len, format, ap);
-	va_end(ap);
+/* External functions */
 
-	shell_write((void *)buf, strlen(buf));
-}
+/* Writes data to server */
+static	void		(*shell_write)(void *data, uint32_t len);
+
+
+/* Shell printf wrapper function */
+#define			shell_printf(fmt...)			__shell_printf(shell_printf_buf_len, fmt)
+static	void		(*__shell_printf)(unsigned int buflen, const char *format, ...);
+
+
+/* Shell log wrapper functions */
+#define			shell_log(module, msg...)		__shell_log(LOG_MSG, module, msg)
+#define			shell_log_warning(module, msg...)	__shell_log(LOG_WARNING, module, msg)
+#define			shell_log_error(module, msg...)		__shell_log(LOG_ERROR, module, msg)
+#define			shell_log_fatal(module, msg...)		__shell_log(LOG_FATAL, module, msg)
+static	int  		(*__shell_log)(int type, const char *module, const char *msg, ...);
+
+
+/* Clean exit from shell module */
+static	void		(*shell_exit)(void);
+
 
 #endif /* HANDLE_USER_H */
 #endif /* SHELL_MODULE_H */

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <errno.h>
 #include <dlfcn.h>
@@ -24,6 +25,9 @@
 #include "handle_user.h"
 #include "shell_module.h"
 
+
+/* server specific globals */
+static int			auth, shell_req, pty_req;
 static int			user_running;
 static ssh_session		user_session;
 static ssh_channel		user_chan;
@@ -31,20 +35,18 @@ static char			*user_buf;
 static void			*user_hndl;
 static shell_callbacks_t	shell_cb;
 
-static int		auth;
-static char		*user_uname;
-static char		user_ip[INET_ADDRSTRLEN+1];
-static char		module[MAXFILE];
-static unsigned	int	user_level;
+/* user specific globals */
+static char			*user_uname;
+static char			user_ip[INET_ADDRSTRLEN+1];
+static unsigned	int		user_level;
+static char			module[MAXFILE];
 
 
-void	handle_user_unload_shell() {
+void (*shell_init)(shell_callbacks_t *cb);
 
-	dlclose(user_hndl);
-}
 
 /* Clean server child termination */
-void	handle_user_terminate() {
+static	void	handle_user_terminate() {
 
 	if (user_uname != NULL)
 		free(user_uname);
@@ -53,14 +55,26 @@ void	handle_user_terminate() {
 	_exit(EXIT_FAILURE);
 }
 
-void	handle_user_terminate_shell() {
+/* Unloads the shell */
+static	void	handle_user_unload_shell() {
 
-	free(user_buf);
+	dlclose(user_hndl);
+}
+
+
+/* Unload shell, free read buffer and terminate */
+static	void	handle_user_terminate_shell() {
+
+	if (user_buf != NULL)
+		free(user_buf);
+
 	handle_user_unload_shell();
 	handle_user_terminate();
 }
 
-void	handle_user_write(void *data, uint32_t len) {
+
+/* Write shell callback */
+void	shell_write_cb(void *data, uint32_t len) {
 
 	int rc;
 
@@ -71,30 +85,50 @@ void	handle_user_write(void *data, uint32_t len) {
 	}
 }
 
+/* Shell printf like function callback  */
+void	shell_printf_cb(unsigned int buflen, const char *format, ...) {
 
-void	handle_user_exit() {
+	va_list ap;
+	char *buf = alloca(buflen);
+
+	va_start(ap, format);
+	vsnprintf(buf, buflen, format, ap);
+	va_end(ap);
+
+	shell_write_cb((void *)buf, strlen(buf));
+}
+
+/* Shell exit callback */
+void	shell_exit_cb() {
 
 	serv_log("User %s (%s) has logged out", user_uname, user_ip);
 	handle_user_terminate_shell();
 }
 
 
-void	handle_user_load_shell() {
+/* Loads the shell module */
+static	void	handle_user_load_shell() {
 
 	char path[MAXFILE];
 
+	/* get the correct path */
 	if (serv_options.modules_dir[0])
 		snprintf(path, MAXFILE - 1, "%s/%s", serv_options.modules_dir, module);
 	else
 		snprintf(path, MAXFILE - 1, "%s/%s", default_file(DEFAULT_MODDIR), module);
 
+	/* load */
 	user_hndl = dlopen(path, RTLD_LAZY);
 	if (user_hndl == NULL) {
 		serv_log_error("User %s (%s): Cannot load shell module %s", user_uname, user_ip, path);
 		handle_user_terminate();
 	}
 
-	void (*shell_init)(shell_callbacks_t *a) = dlsym(user_hndl, "shell_init");
+	/* setup shell callbacks */
+
+	//void (*shell_init)(shell_callbacks_t *cb) = dlsym(user_hndl, "shell_init");
+	shell_init = dlsym(user_hndl, "shell_init");
+
 	if (shell_init == NULL) {
 		serv_log_error("User %s (%s): Cannot load 'shell_init()' frome module %s", user_uname, user_ip, path);
 		handle_user_terminate();
@@ -103,15 +137,18 @@ void	handle_user_load_shell() {
 	shell_cb.ip_addr = user_ip;
 	shell_cb.uname = user_uname;
 	shell_cb.level = user_level;
-	shell_cb.shell_read = NULL;
-	shell_cb.shell_write = &handle_user_write;
+	shell_cb.shell_read = NULL;			/* shell module must provide this! */
+	shell_cb.shell_change_window_size = NULL;	/* shell module must provide this! */
+	shell_cb.shell_write = &shell_write_cb;
+	shell_cb.shell_printf = &shell_printf_cb;
 	shell_cb.shell_log = &__serv_log;
-	shell_cb.shell_exit = &handle_user_exit;
-	shell_init(&shell_cb);
+	shell_cb.shell_exit = &shell_exit_cb;
 }
 
 
-static	int	login_pubkey(ssh_session session, const char *usr, struct ssh_key_struct *upub,
+
+/* Login with pubckey callback */
+static	int	login_pubkey_cb(ssh_session session, const char *usr, struct ssh_key_struct *upub,
 				char signature_state, void *user_data) {
 	char keypath[MAXFILE];
 	char *pubkey;
@@ -119,6 +156,7 @@ static	int	login_pubkey(ssh_session session, const char *usr, struct ssh_key_str
 	ssh_key spub;
 	users_info_t info;
 	FILE *fd;
+
 
 	switch (signature_state) {
 	  case SSH_PUBLICKEY_STATE_NONE:
@@ -131,12 +169,17 @@ static	int	login_pubkey(ssh_session session, const char *usr, struct ssh_key_str
 		return SSH_AUTH_DENIED;
 	}
 
+
+	/* get correct pubkey path */
 	memset(keypath, 0, sizeof(keypath));
 
 	if (serv_options.pubdir[0])
 		snprintf(keypath, MAXFILE - 1, "%s/%s.pub", serv_options.pubdir, usr);
 	else
 		snprintf(keypath, MAXFILE - 1, "%s/%s.pub", default_file(DEFAULT_PUBDIR), usr);
+
+
+	/* search for requested user in users config file */
 
 	fd = fopen(serv_options.users_file, "r");
 	if (fd == NULL) {
@@ -166,6 +209,9 @@ static	int	login_pubkey(ssh_session session, const char *usr, struct ssh_key_str
 	}
 	fclose(fd);
 
+
+	/* test for a valid key in pubkey file */
+
 	fd = fopen(keypath, "r");
 	if (fd == NULL) {
 		serv_log_error("%s cannot open pubkey file %s", user_ip, keypath);
@@ -193,9 +239,9 @@ static	int	login_pubkey(ssh_session session, const char *usr, struct ssh_key_str
 		ssh_key_free(spub);
 	}
 
-
 terminate:
-	fclose(fd);
+	if (fd != NULL)
+		fclose(fd);
 
 	if (auth) {
 		ret = SSH_AUTH_SUCCESS;
@@ -205,35 +251,11 @@ terminate:
 	}
 
 	return ret;
-
 }
 
 
-
-static	int	shell_request(ssh_session session, ssh_channel channel, void *userdata) {
-
-	/* load shell module */
-	fprintf(stderr, "shell\n");
-	handle_user_load_shell();
-	return 0;
-}
-
-static	int	pty_request(ssh_session session, ssh_channel channel, const char *term, 
-				int x,int y, int px, int py, void *userdata) {
-
-	fprintf(stderr, "terminal x: %i. y: %i\n", x, y);
-	return 0;
-}
-
-static	int	pty_change_window_size(ssh_session session, ssh_channel channel,
-				int x,int y, int px, int py, void *userdata) {
-
-	fprintf(stderr, "terminal x: %i. y: %i\n", x, y);
-	return 0;
-}
-
-
-static	int	login_password(ssh_session session, const char *usr, const char *pass, void *userdata) {
+/* Passowrd loging callback */
+static	int	login_password_cb(ssh_session session, const char *usr, const char *pass, void *userdata) {
 
 	int ret;
 
@@ -255,14 +277,50 @@ static	int	login_password(ssh_session session, const char *usr, const char *pass
 }
 
 
+/* Load user shell module callback */
+static	int	shell_request_cb(ssh_session session, ssh_channel channel, void *userdata) {
+
+	/* load shell module */
+	handle_user_load_shell();
+	shell_req = 1;
+	return 0;
+}
+
+
+/* Terminal request callback. Save terminal data to pass to user's shell module */
+static	int	pty_request_cb(ssh_session session, ssh_channel channel, const char *term, 
+				int x,int y, int px, int py, void *userdata) {
+
+
+	shell_cb.shell_info.x = x;
+	shell_cb.shell_info.y = y;
+	shell_cb.shell_info.px = px;
+	shell_cb.shell_info.py = py;
+	pty_req = 1;
+	return 0;
+}
+
+
+/* Change window dimensions callback */
+static	int	pty_change_window_size_cb(ssh_session session, ssh_channel channel,
+				int x, int y, int px, int py, void *userdata) {
+
+	if (shell_cb.shell_change_window_size != NULL)
+		shell_cb.shell_change_window_size(x, y, px, py);
+	return 0;
+}
+
+/* Channel callbacks struct */
 static struct 	ssh_channel_callbacks_struct channel_cb = {
 
-	.channel_pty_request_function = pty_request,
-	.channel_pty_window_change_function =  pty_change_window_size,
-	.channel_shell_request_function = shell_request
+	.channel_pty_request_function = pty_request_cb,
+	.channel_pty_window_change_function =  pty_change_window_size_cb,
+	.channel_shell_request_function = shell_request_cb
 };
 
-static	ssh_channel new_channel(ssh_session session, void *userdata) {
+
+/* New channel request callback */
+static	ssh_channel new_channel_cb(ssh_session session, void *userdata) {
 
 	if (user_chan != NULL)
 		return NULL;
@@ -275,8 +333,10 @@ static	ssh_channel new_channel(ssh_session session, void *userdata) {
 
 	ssh_callbacks_init(&channel_cb);
 	ssh_set_channel_callbacks(user_chan, &channel_cb);
+
 	return user_chan;
 }	
+
 
 /* Server child to handle a newly connected user */
 void	handle_user(ssh_session session) {
@@ -288,12 +348,14 @@ void	handle_user(ssh_session session) {
 
 	struct ssh_server_callbacks_struct serv_cb =  {
 		.userdata = NULL,
-		.auth_password_function = login_password,
-		.auth_pubkey_function = login_pubkey,
-		.channel_open_request_session_function = new_channel
+		.auth_password_function = login_password_cb,
+		.auth_pubkey_function = login_pubkey_cb,
+		.channel_open_request_session_function = new_channel_cb
 	};
 
 	auth = 0;
+	shell_req = 0;
+	pty_req = 0;
 	user_chan = NULL;
 	user_uname = NULL;
 	user_session = session;
@@ -320,8 +382,10 @@ void	handle_user(ssh_session session) {
 
 	ssh_event_add_session(eventloop, session);
 
+	/* setup a read buffer */
+
 	/* wait for auth and channel */
-	while (!(auth && user_chan != NULL)) {
+	while (!(auth && shell_req && pty_req && user_chan != NULL)) {
 		rc = ssh_event_dopoll(eventloop, USER_POLL_TIMEOUT);
 		switch (rc) {
 		  case SSH_ERROR:
@@ -340,26 +404,7 @@ break_auth:
 		handle_user_terminate();
 	}
 
-
-	/*
-				usr = ssh_message_auth_user(sshmsg);
-				if (serv_options.pubdir[0])
-					snprintf(keypath, MAXFILE - 1, "%s/%s.pub", serv_options.pubdir, usr);
-				else
-					snprintf(keypath, MAXFILE - 1, "%s/%s.pub", default_file(DEFAULT_PUBDIR), usr);
-
-				if (!access(keypath, F_OK))
-					ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PUBLICKEY);
-				else
-					ssh_message_auth_set_methods(sshmsg, SSH_AUTH_METHOD_PASSWORD);
-				
-				ssh_message_reply_default(sshmsg);
-				break;
-	*/
-
-	/*
-	*/
-
+	/* authenticated! */
 
 	/* setup a read buffer */
 	user_buf = memalloc(USER_READ_BUF);
@@ -367,6 +412,9 @@ break_auth:
 		handle_user_unload_shell();
 		handle_user_terminate();
 	}
+
+	/* init shell module */
+	shell_init(&shell_cb);
 
 	user_running = 1;
 	while (user_running) {
