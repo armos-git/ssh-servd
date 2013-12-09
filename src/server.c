@@ -87,7 +87,7 @@ static	void	serv_save_state() {
 	/* Returning from setlongjmp() here */
 
 	/* Log the crash */
-	serv_log_fatal("Received SIGSEGV when trying to access memory address %p", bad_addr);
+	serv_log_fatal("[pid %u] Received SIGSEGV when trying to access memory address %p", getpid(), bad_addr);
 
 	/* Execute recovery code (quit for now)*/
 	_exit(EXIT_FAILURE);
