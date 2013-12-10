@@ -19,7 +19,7 @@ struct	shell_info_struct {
   int x; /**< width in characters  */
   int y; /**< height in characters */ 
   int px; /**< width in pixels */
-  int py; /** < height in pixels */
+  int py; /**< height in pixels */
 };
 
 /** @brief Shell callbacks struct

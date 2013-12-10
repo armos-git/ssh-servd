@@ -5,7 +5,7 @@ ssh-servd
 *.pub
 *rsa*
 *dsa*
-doc/html
+html
 build
 lib
 users

@@ -36,7 +36,7 @@ To terminate your shell session use shell_exit();
 
 To build your new module, compile it as a shared lib and place it in your modules directory:
 
-<b><i>gcc -shared -fPIC -o myshell.mod myshell.c</b></i>
+<b><i>gcc -shared -fPIC -o myshell.mod myshell.c</i></b>
 
 @sa shell_types : shell_functions : shell_globals
 
