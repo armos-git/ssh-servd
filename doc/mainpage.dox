@@ -1,0 +1,7 @@
+/** @mainpage
+
+@ref configuration "Server configuration"
+
+@ref shell "Building a custom shell module" 
+
+*/

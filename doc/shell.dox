@@ -1,0 +1,43 @@
+/** @page shell
+
+@brief Building a custom shell module
+
+
+To begin with, add this header to your new shell source file:
+
+<b><i>#include "shell_module.h"</i></b>
+
+After that you want to define all shell's global objects.
+Use the following macro:
+
+<b><i>@ref SHELL_DEFINE_GLOBALS</i></b>
+
+Now define the init function.
+It should look something like this:
+
+
+@code
+void	shell_init(shell_callbacks_t *cb) {
+
+	SHELL_INIT_GLOBALS(cb);
+	...
+	.. your init code ..
+	...
+}
+@endcode
+
+Then implement all the other callback functions:
+
+@ref shell_callbacks_t.shell_read "shell_read()"
+
+@ref shell_callbacks_t.shell_change_window_size "shell_change_window_size()"
+
+To terminate your shell session use shell_exit();
+
+To build your new module, compile it as a shared lib and place it in your modules directory:
+
+<b><i>gcc -shared -fPIC -o myshell.mod myshell.c</b></i>
+
+@sa shell_types : shell_functions : shell_globals
+
+*/
