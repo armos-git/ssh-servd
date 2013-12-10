@@ -74,7 +74,7 @@ static	void	handle_user_terminate_shell() {
 
 
 /* Write shell callback */
-void	shell_write_cb(void *data, uint32_t len) {
+int	shell_write_cb(void *data, uint32_t len) {
 
 	int rc;
 
@@ -83,10 +83,12 @@ void	shell_write_cb(void *data, uint32_t len) {
 		serv_log_error("%s channel write failed. ssh_channel_write(): %s", user_ip, ssh_get_error(user_session));
 		handle_user_terminate_shell();
 	}
+
+	return rc;
 }
 
 /* Shell printf like function callback  */
-void	shell_printf_cb(unsigned int buflen, const char *format, ...) {
+int	shell_printf_cb(unsigned int buflen, const char *format, ...) {
 
 	va_list ap;
 	char *buf = alloca(buflen);
@@ -95,7 +97,7 @@ void	shell_printf_cb(unsigned int buflen, const char *format, ...) {
 	vsnprintf(buf, buflen, format, ap);
 	va_end(ap);
 
-	shell_write_cb((void *)buf, strlen(buf));
+	return shell_write_cb((void *)buf, strlen(buf));
 }
 
 /* Shell exit callback */

@@ -3,11 +3,7 @@
 #include <stdint.h>
 #include "shell_module.h"
 
-
-/* Shell side interface functions prototypes */
-void	shell_read(void *data, uint32_t len);
-void	shell_change_window_size(int x, int y, int px, int py);
-
+SHELL_DEFINE_GLOBALS
 
 void	shell_init(shell_callbacks_t *cb) {
 
@@ -36,5 +32,5 @@ void	shell_read(void *data, uint32_t len) {
 
 void	shell_change_window_size(int x, int y, int px, int py) {
 
-	shell_printf("%i %i %i %i\r\n", x, y, px, py);
+	shell_printf("terminal: %i %i %i %i\r\n", x, y, px, py);
 }
