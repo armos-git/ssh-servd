@@ -1,7 +1,7 @@
 #ifndef SSH_SERVER_H
 #define SSH_SERVER_H
 
-#define	MAXFILE			256
+#define	MAXFILE			1024
 #define PID_FILE		"/var/run/ssh-server.pid"
 
 

@@ -1,7 +1,31 @@
 /** @mainpage
 
+@author	vlad <octal.s@gmal.com>
+
+<h2> Description </h2>
+
+SSH ServD is a flexible ssh server implementation which allows you to
+use it for whatever you want.
+The basic idea is that this program will only support the true server stuff and let you
+define your own custom modules which it will load dynamicly.
+You will not be able to log in to your computer with this program. Instead you can write down
+your own 'shell modules' and use them for your purposes. Those modules are just plain shared
+libraries. Each user can have their own modules.
+If you have a program and you want to have ssh access to it, then your on the right page.
+
+The server features:
+
+<ul>
+<li> adding/removing users </li>
+<li> authentication (passwords and public keys)</li>
+<li> logging </li>
+<li> custom shell modules </li>
+</ul>
+
+<h2> To setup your server... </h2>
 @ref configuration "Server configuration"
 
+<h2> To build your own modules... </h2>
 @ref shell "Building a custom shell module" 
 
 */

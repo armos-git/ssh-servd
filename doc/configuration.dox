@@ -1,5 +1,79 @@
 /** @page configuration
 
-@brief Configuration file options
+<h3>Default configuration files</h3>
 
+main config:<br>
+<i>/etc/ssh-servd/ssh-servd.conf</i>
+
+server keys:<br>
+<i>/etc/ssh-servd/ssh-servd-rsa<br>
+/etc/ssh-servd/ssh-servd-dsa</i>
+
+users config file:<br>
+<i>/etc/ssh-servd/users</i>
+
+shell modules:<br>
+<i>/etc/ssh-servd/modules</i>
+
+public keys:<br>
+<i>/etc/ssh-servd/pubkeys</i>
+
+@note public keys must be sotered in files like 'username.pub'
+Ex: john.pub alex.pub ...
+Each user can have many keys in their .pub file
+
+<h3>Program options</h3>
+
+@verbatim
+Usage: ssh-servd [-fDku]
+
+  -h               : prints this
+  -f config        : specify config file to use
+  -D               : run as daemon
+  -k rsa,dsa       : generate rsa or dsa private keys
+  -u add           : adds new users
+@endverbatim
+
+<h3>Configuration file</h3>
+
+@verbatim
+# Server bind
+listen          "0.0.0.0"
+port            8000
+
+# Log file (enter full path)
+log             "/home/vlad/Code/C/ssh-servd/log"
+
+# All of the following are optional. They will override the default ones
+#
+rsa_key         "/home/vlad/Code/C/ssh-servd/rsa"
+dsa_key         "/home/vlad/Code/C/ssh-servd/dsa"
+ 
+users           "/home/vlad/Code/C/ssh-servd/users"
+modules_dir     "/home/vlad/Code/C/ssh-servd"
+pubkeys_dir     "/home/vlad/Code/C/ssh-servd"
+@endverbatim
+
+<h3>Simple tutorial</h3>
+
+After you edit your configuration file the first thing you need is to generate server keys:
+
+<b>./ssh-servd -k rsa<br>
+./ssh-servd -k dsa</b>
+
+Rename and move the files to their correct place like specified in the config file.
+
+Add a user:
+
+<b>./ssh-servd -u add</b>
+
+You need a shell module now. You can use the example shell provided.
+
+<b>make shell</b>
+
+Copy shell_example.mod to your modules dir.
+
+...Drink a BeeR :)
+
+@sa @ref shell "Building a custom shell module" 
 */

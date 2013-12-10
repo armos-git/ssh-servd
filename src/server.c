@@ -37,11 +37,11 @@ int			serv_term_sig;
 static	void	print_usage() {
 
 	fprintf(stderr, "Usage: ssh-servd [-fDku]\n\n");
-	fprintf(stderr, "  -h         : prints this\n");
-	fprintf(stderr, "  -f         : config file\n");
-	fprintf(stderr, "  -D         : run as daemon\n");
-	fprintf(stderr, "  -k rsa,dsa : generate rsa or dsa private keys\n");
-	fprintf(stderr, "  -u add     : adds new users\n\n");
+	fprintf(stderr, "  -h               : prints this\n");
+	fprintf(stderr, "  -f config        : specify config file to use\n");
+	fprintf(stderr, "  -D               : run as daemon\n");
+	fprintf(stderr, "  -k rsa,dsa       : generate rsa or dsa private keys\n");
+	fprintf(stderr, "  -u add           : adds new users\n\n");
 	exit(EXIT_FAILURE);
 }
 
