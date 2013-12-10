@@ -77,11 +77,59 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 
 </div><!-- top -->
 <div class="contents">
-<div class="textblock"><p>Configuration file options </p>
+<div class="textblock"><h3>Default configuration files</h3>
+<p>main config:<br/>
+ <em>/etc/ssh-servd/ssh-servd.conf</em></p>
+<p>server keys:<br/>
+ <em>/etc/ssh-servd/ssh-servd-rsa<br/>
+ /etc/ssh-servd/ssh-servd-dsa</em></p>
+<p>users config file:<br/>
+ <em>/etc/ssh-servd/users</em></p>
+<p>shell modules:<br/>
+ <em>/etc/ssh-servd/modules</em></p>
+<p>public keys:<br/>
+ <em>/etc/ssh-servd/pubkeys</em></p>
+<dl class="section note"><dt>Note</dt><dd>public keys must be sotered in files like 'username.pub' Ex: john.pub alex.pub ... Each user can have many keys in their .pub file</dd></dl>
+<h3>Program options</h3>
+<pre class="fragment">Usage: ssh-servd [-fDku]
+
+  -h               : prints this
+  -f config        : specify config file to use
+  -D               : run as daemon
+  -k rsa,dsa       : generate rsa or dsa private keys
+  -u add           : adds new users
+</pre><h3>Configuration file</h3>
+<pre class="fragment"># Server bind
+listen          "0.0.0.0"
+port            8000
+
+# Log file (enter full path)
+log             "/home/vlad/Code/C/ssh-servd/log"
+
+# All of the following are optional. They will override the default ones
+#
+rsa_key         "/home/vlad/Code/C/ssh-servd/rsa"
+dsa_key         "/home/vlad/Code/C/ssh-servd/dsa"
+ 
+users           "/home/vlad/Code/C/ssh-servd/users"
+modules_dir     "/home/vlad/Code/C/ssh-servd"
+pubkeys_dir     "/home/vlad/Code/C/ssh-servd"
+</pre><h3>Simple tutorial</h3>
+<p>After you edit your configuration file the first thing you need is to generate server keys:</p>
+<p><b>./ssh-servd -k rsa<br/>
+ ./ssh-servd -k dsa</b></p>
+<p>Rename and move the files to their correct place like specified in the config file.</p>
+<p>Add a user:</p>
+<p><b>./ssh-servd -u add</b></p>
+<p>You need a shell module now. You can use the example shell provided.</p>
+<p><b>make shell</b></p>
+<p>Copy shell_example.mod to your modules dir.</p>
+<p>...Drink a BeeR :)</p>
+<dl class="section see"><dt>See Also</dt><dd><a class="el" href="shell.html">Building a custom shell module</a> </dd></dl>
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Dec 10 2013 07:33:03 for SSH ServD by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Dec 11 2013 00:00:18 for SSH ServD by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.5
 </small></address>
