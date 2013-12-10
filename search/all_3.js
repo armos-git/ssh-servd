@@ -1,0 +1,26 @@
+var searchData=
+[
+  ['shell_5fattr',['shell_attr',['../group__shell__globals.html#ga915266354b02b05b8250c46a48611a68',1,'shell_module.h']]],
+  ['shell_5fcallbacks_5ft',['shell_callbacks_t',['../structshell__callbacks__t.html',1,'']]],
+  ['shell_5fchange_5fwindow_5fsize',['shell_change_window_size',['../group__shell__functions.html#ga863e2cedcf9ac4800d77418358b88069',1,'shell_callbacks_t']]],
+  ['shell_5fdefine_5fglobals',['SHELL_DEFINE_GLOBALS',['../group__shell__globals.html#ga9fa33d3bb127bd00ddb5eee582a06b96',1,'shell_module.h']]],
+  ['shell_5fexit',['shell_exit',['../group__shell__functions.html#gafc6d8336645522668a4462e25ed012c8',1,'shell_callbacks_t::shell_exit()'],['../group__shell__globals.html#gace6f405a12a215eb8d45b67c9b0e10b1',1,'shell_exit():&#160;shell_module.h']]],
+  ['shell_20module_20interface_20functions',['Shell module interface functions',['../group__shell__functions.html',1,'']]],
+  ['shell_20module_20global_20objects',['Shell module global objects',['../group__shell__globals.html',1,'']]],
+  ['shell_5finfo',['shell_info',['../structshell__callbacks__t.html#af3f1295c742508d51efaf55c7ac2795b',1,'shell_callbacks_t']]],
+  ['shell_5finfo_5fstruct',['shell_info_struct',['../structshell__info__struct.html',1,'']]],
+  ['shell_5finit',['shell_init',['../group__shell__globals.html#gaca2b18d33e4ed096bf8b61511143f7e0',1,'shell_module.h']]],
+  ['shell_5finit_5fglobals',['SHELL_INIT_GLOBALS',['../group__shell__globals.html#ga51d0279dc1992a597cab33ee108bd445',1,'shell_module.h']]],
+  ['shell_5flog',['shell_log',['../group__shell__functions.html#ga0d962090a68e4c8b35ecabca0a6cc599',1,'shell_callbacks_t::shell_log()'],['../group__shell__globals.html#gac072b8f4228ddc09d6e7635366866581',1,'shell_log():&#160;shell_module.h']]],
+  ['shell_5flog_5ferror',['shell_log_error',['../group__shell__globals.html#gae07d20e64d079c76aeb2ede866b00c53',1,'shell_module.h']]],
+  ['shell_5flog_5ffatal',['shell_log_fatal',['../group__shell__globals.html#gabe2dc3e17e74e02ab52ae8d49c998246',1,'shell_module.h']]],
+  ['shell_5flog_5fwarning',['shell_log_warning',['../group__shell__globals.html#ga8062e73a3e7ce4300bd309b42572e2f1',1,'shell_module.h']]],
+  ['shell_5fprintf',['shell_printf',['../group__shell__functions.html#gab9d18147145abe65682f8948a038bed8',1,'shell_callbacks_t::shell_printf()'],['../group__shell__globals.html#gad6ce8accb25bf8941dc7c8b1cf6e9359',1,'shell_printf():&#160;shell_module.h']]],
+  ['shell_5fprintf_5fbuflen',['shell_printf_buflen',['../group__shell__globals.html#ga7a315c694aadd0d43b4e32f2365ecbd2',1,'shell_module.h']]],
+  ['shell_5fread',['shell_read',['../group__shell__functions.html#ga5dcda988c27b2ea88c776d1f7e583e14',1,'shell_callbacks_t']]],
+  ['shell_20module_20types',['Shell module types',['../group__shell__types.html',1,'']]],
+  ['shell_5fuser_5fipaddr',['shell_user_ipaddr',['../group__shell__globals.html#ga776d43f66afc5742fc0e0bad9f2cd094',1,'shell_module.h']]],
+  ['shell_5fuserlevel',['shell_userlevel',['../group__shell__globals.html#ga0ea8659e78e9c995f727f7dfaff7b7bb',1,'shell_module.h']]],
+  ['shell_5fusername',['shell_username',['../group__shell__globals.html#ga16c5bb79795d5b433f2244a8e9c5ca62',1,'shell_module.h']]],
+  ['shell_5fwrite',['shell_write',['../group__shell__functions.html#ga29fcfd7a784ee1fe7dfdd78f3b858298',1,'shell_callbacks_t::shell_write()'],['../group__shell__globals.html#gaa52a2d3e4328cbbb82cb2bd3f4646551',1,'shell_write():&#160;shell_module.h']]]
+];
