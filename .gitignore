@@ -1,8 +1,0 @@
-ssh-servd
-*rsa*
-*dsa*
-*mod*
-users
-*.o
-*.a
-lib/
