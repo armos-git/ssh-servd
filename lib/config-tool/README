@@ -1,0 +1,212 @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+Versatile configuration file parser.
+It makes the magic to connect your config file with your program easy!
+You can personalize how your config will look.
+For examples checkout the example source codes in src/
+
+Author: Vlad - octal.s@gmail.com
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
+***** INSTALL *****
+
+To compile static:
+
+	make
+
+---
+
+To compile shared lib:
+
+	make shared
+
+---
+
+To compile the example programs type:
+
+	make example
+
+---
+
+To clean everything:
+
+	make clean_all
+
+
+To cross-compile:
+
+	make CC=your_cross_compiler CFLAGS=your_cflags
+
+	make shared CC=your_cross_compiler CFLAGS=your_cflags
+
+	make example CC=your_cross_compiler CFLAGS=your_cflags
+
+This lib was test on:
+	x86/64: GNU Linux, OpenBSD
+	mips32: Busybox GNU Linux
+
+***** HOW IT WORKS *****
+
+Detailed info for each call is in the header file.
+
+0. Syntax.
+---------------
+
+Basic syntax is:
+	identifier assigner value, value, ...
+
+Your varibales names are defined by the identifier. It accepts chars a..z, A..Z, 0..9, and _
+The identifier cannot start with a digit!. The identifier max length is defined in the header file.
+
+Values can be all those one that are accepted by the format like in printf()
+
+The syntax for char is: 'c'
+The syntax for string is: "string". Special chars: '\n', '\"', '\\'
+
+White spaces and tabs are ignored.
+You can use comments anywhere you like. All chars after your comment char will be ignored untill end of line.
+
+
+1. You need to define a config variable:
+----------------------------------------
+
+	config_t myconf;
+
+
+2. Init your box.
+-----------------
+
+	config_init(&myconf, "test.conf");
+
+
+3. (Optional) Use the following calls to personalize your config box.
+----------------------------------------------------------
+
+	config_set_layout(&myconf, LAYOUT);        -- sets how the config file looks (see below)
+	config_set_comment(&myconf, '#');          -- sets the char that indicates start of a comment
+	config_set_assigner(&myconf, '=');         -- sets the assigner char. \0 for no assigner
+	config_set_string_buffer(&myconf, 512);    -- sets the maximum buffer size to hold text
+	config_set_filesize(&myconf, SIZE_LAYOUT); -- sets the file size layout.
+
+If step 3. is skipped default values will be loaded:
+
+	layout: CONFIG_SIMPLE
+	comment: '#'
+	no assigner
+	text buffer: 1025
+	file size layout: CONFIG_SMALL
+
+
+LAYOUT can be:
+
+	CONFIG_SIMPLE
+	-------------
+
+	name = "Fred"
+	age = 23
+	hex_val = 0xff
+	...
+	or
+	...
+	x 2.3
+	y 1.7
+	letter 'T'
+
+	You can't declare variables with the same name in this layout.
+
+	CONFIG_SUBJECT
+	--------------
+
+	[clients]
+	name1 = "Alex"
+	name2 = "Tina"
+
+	[vip clients]
+	name1 = "George"
+	name2 = "Silvia"
+
+	You define different subjects. Each subject has it's own private vars
+	and you can use the same var names.
+
+	...
+	more layouts to come in the future
+	...
+
+SIZE_LAYOUT can be:
+
+	These layouts are used for better preformance.
+	They were tested on different configs. Howover the file size
+	ranges are approtximate.
+
+	CONFIG_TINY:   0 - 1k 
+	CONFIG_SMALL:  1k - 10k
+	CONFIG_MEDIUM: 10k - 1mb
+	CONFIG_LARGE:  1mb - 10mb
+	CONFIG_HUGE:   > 10mb
+
+5. Bind a variable.
+-------------------
+Use this call to bind a variable name in the config file with the actual var in your program.
+You can use formating like in a printf()
+
+5a. single value
+----------------
+	config_bind_var(&myconf, "potatos", "%i", &x);
+
+5b. arrays
+----------
+	void *ptr;
+	ptr = config_bind_var(&myconf, "values", "%i", NULL); -- NULL indicates that this is an array
+	for (i = 0; i < 5; i++)
+		ptr = config_addto_var(ptr, &values[i]);
+
+	...in your config file:
+		values = 1, 5, 10, 20, 33
+
+NOTE:
+Array values will be saved in the order you define them in your code.
+Array values may reside in different variables. It's your choise.
+
+
+6. Parse the config.
+--------------------
+
+	config_parse(&myconf);
+
+
+7. Close and free the config box
+--------------------------------
+
+	config_close(&myconf);
+
+
+8. Error handling.
+------------------
+
+For a safe use always follow this sequence. Any other may result in undefined behaviour:
+
+
+	if (config_init() != CONFIG_OK) {
+		handle error (see below)
+		config_close();
+	}
+
+	config_set_
+	config_bind_
+
+	if (config_parse() != CONFIG_OK) {
+		handle error (see below)
+		config_close();
+	}
+
+	config_close();
+
+To handle the last error use config_get_error(&myconf); This will return a string of the last error.
+
+
+9. Threads.
+-----------
+
+This lib is not thread safe so if you are using it with threads it's on your own.

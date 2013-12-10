@@ -1,0 +1,5 @@
+There is a bug with arrays and comments.
+Example:
+	varx = 1, \
+	#	2, \   -- this will fail
+		3
