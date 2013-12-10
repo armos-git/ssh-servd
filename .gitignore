@@ -1,0 +1,12 @@
+ssh-servd
+*.o
+*.a
+*.mod
+*.pub
+*rsa*
+*dsa*
+doc/html
+build
+lib
+users
+
