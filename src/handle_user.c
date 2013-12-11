@@ -308,7 +308,7 @@ static	int	pty_change_window_size_cb(ssh_session session, ssh_channel channel,
 				int x, int y, int px, int py, void *userdata) {
 
 	if (shell_cb.shell_change_window_size != NULL)
-		shell_cb.shell_change_window_size(x, y, px, py);
+		shell_cb.shell_change_window_size(y, x, py, px);
 	return 0;
 }
 
