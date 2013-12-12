@@ -116,7 +116,7 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 
 		rc2 = read_tty(ver, rc, 1);
 		if (rc < 0) {
-			free(ver);
+			memfree(ver);
 			return 0;
 		}
 		rc--;
@@ -125,11 +125,11 @@ static	int	users_config_prompt(users_info_t *info, int verify) {
 
 		if ((rc != rc2) || (strcmp(info->pass, ver))) {
 			printf("\nPasswords don't match!\n");
-			free(ver);
+			memfree(ver);
 			return 0;
 		}
 
-		free(ver);
+		memfree(ver);
 	}
 
 
@@ -154,12 +154,13 @@ int	users_config_scan_user(FILE *f, users_info_t *info) {
 	unsigned int level;
 	int rc, ret;
 
-	name = NULL;
-	pass_str = NULL;
-	module = NULL;
 	ret = 0;
 
 	while (!feof(f)) {
+		name = NULL;
+		pass_str = NULL;
+		module = NULL;
+
 		rc = fscanf(f, "%ms%ms%u%ms", &name, &module, &level, &pass_str);
 		if (rc == EOF)
 			break;
@@ -174,13 +175,17 @@ int	users_config_scan_user(FILE *f, users_info_t *info) {
 			info->level = level;
 			ret = 1;
 			goto terminate;
+		} else {
+			memfree(name);
+			memfree(pass_str);
+			memfree(module);
 		}
 	}
 
 terminate:
-	free(name);
-	free(pass_str);
-	free(module);
+	memfree(name);
+	memfree(pass_str);
+	memfree(module);
 	return ret;
 }
 
@@ -266,7 +271,7 @@ void	users_config_new() {
 
 	snprintf(salt, len, "$6$%s", info.salt);
 	cr_pass = crypt(info.pass, salt);
-	free(salt);
+	memfree(salt);
 
 	fprintf(f, "%s %s %u %s\n", info.user, info.module, info.level, cr_pass);
 	fclose(f);

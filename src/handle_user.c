@@ -48,9 +48,7 @@ void (*shell_init)(shell_callbacks_t *cb);
 /* Clean server child termination */
 static	void	handle_user_terminate() {
 
-	if (user_uname != NULL)
-		free(user_uname);
-
+	memfree(user_uname);
 	users_close(user_session);
 	_exit(EXIT_FAILURE);
 }
@@ -65,9 +63,7 @@ static	void	handle_user_unload_shell() {
 /* Unload shell, free read buffer and terminate */
 static	void	handle_user_terminate_shell() {
 
-	if (user_buf != NULL)
-		free(user_buf);
-
+	memfree(user_buf);
 	handle_user_unload_shell();
 	handle_user_terminate();
 }
@@ -128,7 +124,6 @@ static	void	handle_user_load_shell() {
 
 	/* setup shell callbacks */
 
-	//void (*shell_init)(shell_callbacks_t *cb) = dlsym(user_hndl, "shell_init");
 	shell_init = dlsym(user_hndl, "shell_init");
 
 	if (shell_init == NULL) {
@@ -226,18 +221,18 @@ static	int	login_pubkey_cb(ssh_session session, const char *usr, struct ssh_key_
 			break;
 
 		if (ssh_pki_import_pubkey_base64(pubkey, ssh_key_type(upub), &spub) != SSH_OK) {
-			free(pubkey);
+			memfree(pubkey);
 			continue;
 		}
 
 		if (!ssh_key_cmp(spub, upub, SSH_KEY_CMP_PUBLIC)) {
 			auth = 1;
-			free(pubkey);
+			memfree(pubkey);
 			ssh_key_free(spub);
 			break;
 		}
 
-		free(pubkey);
+		memfree(pubkey);
 		ssh_key_free(spub);
 	}
 
