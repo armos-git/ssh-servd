@@ -38,6 +38,8 @@ To build your new module, compile it as a shared lib and place it in your module
 
 <b><i>gcc -shared -fPIC -o myshell.mod myshell.c</i></b>
 
+@warning Do not mix fork() and shell, ssh functions in your module! Use threads instead.
+
 @sa shell_types : shell_functions : shell_globals
 
 */
