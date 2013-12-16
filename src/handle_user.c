@@ -87,13 +87,25 @@ int	shell_write_cb(void *data, uint32_t len) {
 int	shell_printf_cb(unsigned int buflen, const char *format, ...) {
 
 	va_list ap;
+	size_t i, j, s;
+	char *temp = alloca(buflen);
 	char *buf = alloca(buflen);
 
 	va_start(ap, format);
 	vsnprintf(buf, buflen, format, ap);
 	va_end(ap);
 
-	return shell_write_cb((void *)buf, strlen(buf));
+	s = strlen(buf);
+	for (i = 0, j = 0; i < s && j < buflen; i++, j++) {
+		if (buf[i] == '\n' || buf[i] == '\r') {
+			temp[j] = '\r';
+			temp[++j] = '\n';
+		} else {
+			temp[j] = buf[i];
+		}
+	} 
+
+	return shell_write_cb((void *)temp, j);
 }
 
 /* Shell exit callback */

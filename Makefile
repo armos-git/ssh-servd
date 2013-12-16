@@ -1,7 +1,7 @@
 CC = gcc
 FLAGS = -g -Wall $(INC) $(CFLAGS)
 CFLAGS =
-LDFLAGS = -L/usr/lib -lssh -ldl -lcrypt
+LDFLAGS = -lssh -lssh_threads -ldl -lcrypt
 AR = ar
 
 SRC = src
@@ -28,7 +28,7 @@ objs.a:	$(OBJ)
 
 $(LIB)/config_tool.a: $(LIB)
 
-	cd $(LIB); make
+	cd $(LIB); make CC=$(CC) FLAGS="$(INC)"
 	
 $(BLD)/%.o: $(SRC)/%.c
 

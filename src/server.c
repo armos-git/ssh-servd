@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <libssh/libssh.h>
 #include <libssh/server.h>
+#include <libssh/callbacks.h>
 
 #define	LOG_MODULE_NAME		"SSH Server"
 #define PHRASE_MAX		50
@@ -389,6 +390,7 @@ int	main(int argc, char **argv) {
 
 	serv_save_state();
 
+	ssh_threads_set_callbacks(ssh_threads_get_pthread());
 	ssh_init();
 
 	sshbind = ssh_bind_new();
