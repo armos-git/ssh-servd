@@ -1,4 +1,4 @@
-ssh-servd v1.0
+ssh-servd v1.1
 ==============
 
  **Author: vlad - octal.s@gmail.com**
